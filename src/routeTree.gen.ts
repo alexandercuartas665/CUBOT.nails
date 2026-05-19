@@ -9,63 +9,58 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ZonasRouteImport } from './routes/zonas'
-import { Route as PqrsRouteImport } from './routes/pqrs'
-import { Route as MantenimientoRouteImport } from './routes/mantenimiento'
-import { Route as FinanzasRouteImport } from './routes/finanzas'
-import { Route as DirectorioRouteImport } from './routes/directorio'
-import { Route as CopropiedadRouteImport } from './routes/copropiedad'
-import { Route as ComunicacionesRouteImport } from './routes/comunicaciones'
-import { Route as AsambleasRouteImport } from './routes/asambleas'
+import { Route as PipelineRouteImport } from './routes/pipeline'
+import { Route as MetricasRouteImport } from './routes/metricas'
+import { Route as LineasRouteImport } from './routes/lineas'
+import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as ConversacionesRouteImport } from './routes/conversaciones'
+import { Route as AutomatizacionesRouteImport } from './routes/automatizaciones'
+import { Route as AsesoresRouteImport } from './routes/asesores'
+import { Route as AgentesRouteImport } from './routes/agentes'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as OrgReportesRouteImport } from './routes/org/reportes'
-import { Route as OrgPanelRouteImport } from './routes/org/panel'
-import { Route as OrgEquipoRouteImport } from './routes/org/equipo'
-import { Route as OrgCustodiaRouteImport } from './routes/org/custodia'
-import { Route as OrgCalendarioRouteImport } from './routes/org/calendario'
-import { Route as AdminIaRouteImport } from './routes/admin/ia'
-import { Route as AdminConsoleRouteImport } from './routes/admin/console'
-import { Route as AdminBillingRouteImport } from './routes/admin/billing'
+import { Route as AdminTenantsRouteImport } from './routes/admin/tenants'
+import { Route as AdminPlanesRouteImport } from './routes/admin/planes'
+import { Route as AdminFacturacionRouteImport } from './routes/admin/facturacion'
 import { Route as AdminAuditoriaRouteImport } from './routes/admin/auditoria'
 
-const ZonasRoute = ZonasRouteImport.update({
-  id: '/zonas',
-  path: '/zonas',
+const PipelineRoute = PipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PqrsRoute = PqrsRouteImport.update({
-  id: '/pqrs',
-  path: '/pqrs',
+const MetricasRoute = MetricasRouteImport.update({
+  id: '/metricas',
+  path: '/metricas',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MantenimientoRoute = MantenimientoRouteImport.update({
-  id: '/mantenimiento',
-  path: '/mantenimiento',
+const LineasRoute = LineasRouteImport.update({
+  id: '/lineas',
+  path: '/lineas',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FinanzasRoute = FinanzasRouteImport.update({
-  id: '/finanzas',
-  path: '/finanzas',
+const LeadsRoute = LeadsRouteImport.update({
+  id: '/leads',
+  path: '/leads',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DirectorioRoute = DirectorioRouteImport.update({
-  id: '/directorio',
-  path: '/directorio',
+const ConversacionesRoute = ConversacionesRouteImport.update({
+  id: '/conversaciones',
+  path: '/conversaciones',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CopropiedadRoute = CopropiedadRouteImport.update({
-  id: '/copropiedad',
-  path: '/copropiedad',
+const AutomatizacionesRoute = AutomatizacionesRouteImport.update({
+  id: '/automatizaciones',
+  path: '/automatizaciones',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ComunicacionesRoute = ComunicacionesRouteImport.update({
-  id: '/comunicaciones',
-  path: '/comunicaciones',
+const AsesoresRoute = AsesoresRouteImport.update({
+  id: '/asesores',
+  path: '/asesores',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AsambleasRoute = AsambleasRouteImport.update({
-  id: '/asambleas',
-  path: '/asambleas',
+const AgentesRoute = AgentesRouteImport.update({
+  id: '/agentes',
+  path: '/agentes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -73,44 +68,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const OrgReportesRoute = OrgReportesRouteImport.update({
-  id: '/org/reportes',
-  path: '/org/reportes',
+const AdminTenantsRoute = AdminTenantsRouteImport.update({
+  id: '/admin/tenants',
+  path: '/admin/tenants',
   getParentRoute: () => rootRouteImport,
 } as any)
-const OrgPanelRoute = OrgPanelRouteImport.update({
-  id: '/org/panel',
-  path: '/org/panel',
+const AdminPlanesRoute = AdminPlanesRouteImport.update({
+  id: '/admin/planes',
+  path: '/admin/planes',
   getParentRoute: () => rootRouteImport,
 } as any)
-const OrgEquipoRoute = OrgEquipoRouteImport.update({
-  id: '/org/equipo',
-  path: '/org/equipo',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OrgCustodiaRoute = OrgCustodiaRouteImport.update({
-  id: '/org/custodia',
-  path: '/org/custodia',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OrgCalendarioRoute = OrgCalendarioRouteImport.update({
-  id: '/org/calendario',
-  path: '/org/calendario',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminIaRoute = AdminIaRouteImport.update({
-  id: '/admin/ia',
-  path: '/admin/ia',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminConsoleRoute = AdminConsoleRouteImport.update({
-  id: '/admin/console',
-  path: '/admin/console',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminBillingRoute = AdminBillingRouteImport.update({
-  id: '/admin/billing',
-  path: '/admin/billing',
+const AdminFacturacionRoute = AdminFacturacionRouteImport.update({
+  id: '/admin/facturacion',
+  path: '/admin/facturacion',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminAuditoriaRoute = AdminAuditoriaRouteImport.update({
@@ -121,205 +91,170 @@ const AdminAuditoriaRoute = AdminAuditoriaRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/asambleas': typeof AsambleasRoute
-  '/comunicaciones': typeof ComunicacionesRoute
-  '/copropiedad': typeof CopropiedadRoute
-  '/directorio': typeof DirectorioRoute
-  '/finanzas': typeof FinanzasRoute
-  '/mantenimiento': typeof MantenimientoRoute
-  '/pqrs': typeof PqrsRoute
-  '/zonas': typeof ZonasRoute
+  '/agentes': typeof AgentesRoute
+  '/asesores': typeof AsesoresRoute
+  '/automatizaciones': typeof AutomatizacionesRoute
+  '/conversaciones': typeof ConversacionesRoute
+  '/leads': typeof LeadsRoute
+  '/lineas': typeof LineasRoute
+  '/metricas': typeof MetricasRoute
+  '/pipeline': typeof PipelineRoute
   '/admin/auditoria': typeof AdminAuditoriaRoute
-  '/admin/billing': typeof AdminBillingRoute
-  '/admin/console': typeof AdminConsoleRoute
-  '/admin/ia': typeof AdminIaRoute
-  '/org/calendario': typeof OrgCalendarioRoute
-  '/org/custodia': typeof OrgCustodiaRoute
-  '/org/equipo': typeof OrgEquipoRoute
-  '/org/panel': typeof OrgPanelRoute
-  '/org/reportes': typeof OrgReportesRoute
+  '/admin/facturacion': typeof AdminFacturacionRoute
+  '/admin/planes': typeof AdminPlanesRoute
+  '/admin/tenants': typeof AdminTenantsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/asambleas': typeof AsambleasRoute
-  '/comunicaciones': typeof ComunicacionesRoute
-  '/copropiedad': typeof CopropiedadRoute
-  '/directorio': typeof DirectorioRoute
-  '/finanzas': typeof FinanzasRoute
-  '/mantenimiento': typeof MantenimientoRoute
-  '/pqrs': typeof PqrsRoute
-  '/zonas': typeof ZonasRoute
+  '/agentes': typeof AgentesRoute
+  '/asesores': typeof AsesoresRoute
+  '/automatizaciones': typeof AutomatizacionesRoute
+  '/conversaciones': typeof ConversacionesRoute
+  '/leads': typeof LeadsRoute
+  '/lineas': typeof LineasRoute
+  '/metricas': typeof MetricasRoute
+  '/pipeline': typeof PipelineRoute
   '/admin/auditoria': typeof AdminAuditoriaRoute
-  '/admin/billing': typeof AdminBillingRoute
-  '/admin/console': typeof AdminConsoleRoute
-  '/admin/ia': typeof AdminIaRoute
-  '/org/calendario': typeof OrgCalendarioRoute
-  '/org/custodia': typeof OrgCustodiaRoute
-  '/org/equipo': typeof OrgEquipoRoute
-  '/org/panel': typeof OrgPanelRoute
-  '/org/reportes': typeof OrgReportesRoute
+  '/admin/facturacion': typeof AdminFacturacionRoute
+  '/admin/planes': typeof AdminPlanesRoute
+  '/admin/tenants': typeof AdminTenantsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/asambleas': typeof AsambleasRoute
-  '/comunicaciones': typeof ComunicacionesRoute
-  '/copropiedad': typeof CopropiedadRoute
-  '/directorio': typeof DirectorioRoute
-  '/finanzas': typeof FinanzasRoute
-  '/mantenimiento': typeof MantenimientoRoute
-  '/pqrs': typeof PqrsRoute
-  '/zonas': typeof ZonasRoute
+  '/agentes': typeof AgentesRoute
+  '/asesores': typeof AsesoresRoute
+  '/automatizaciones': typeof AutomatizacionesRoute
+  '/conversaciones': typeof ConversacionesRoute
+  '/leads': typeof LeadsRoute
+  '/lineas': typeof LineasRoute
+  '/metricas': typeof MetricasRoute
+  '/pipeline': typeof PipelineRoute
   '/admin/auditoria': typeof AdminAuditoriaRoute
-  '/admin/billing': typeof AdminBillingRoute
-  '/admin/console': typeof AdminConsoleRoute
-  '/admin/ia': typeof AdminIaRoute
-  '/org/calendario': typeof OrgCalendarioRoute
-  '/org/custodia': typeof OrgCustodiaRoute
-  '/org/equipo': typeof OrgEquipoRoute
-  '/org/panel': typeof OrgPanelRoute
-  '/org/reportes': typeof OrgReportesRoute
+  '/admin/facturacion': typeof AdminFacturacionRoute
+  '/admin/planes': typeof AdminPlanesRoute
+  '/admin/tenants': typeof AdminTenantsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/asambleas'
-    | '/comunicaciones'
-    | '/copropiedad'
-    | '/directorio'
-    | '/finanzas'
-    | '/mantenimiento'
-    | '/pqrs'
-    | '/zonas'
+    | '/agentes'
+    | '/asesores'
+    | '/automatizaciones'
+    | '/conversaciones'
+    | '/leads'
+    | '/lineas'
+    | '/metricas'
+    | '/pipeline'
     | '/admin/auditoria'
-    | '/admin/billing'
-    | '/admin/console'
-    | '/admin/ia'
-    | '/org/calendario'
-    | '/org/custodia'
-    | '/org/equipo'
-    | '/org/panel'
-    | '/org/reportes'
+    | '/admin/facturacion'
+    | '/admin/planes'
+    | '/admin/tenants'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/asambleas'
-    | '/comunicaciones'
-    | '/copropiedad'
-    | '/directorio'
-    | '/finanzas'
-    | '/mantenimiento'
-    | '/pqrs'
-    | '/zonas'
+    | '/agentes'
+    | '/asesores'
+    | '/automatizaciones'
+    | '/conversaciones'
+    | '/leads'
+    | '/lineas'
+    | '/metricas'
+    | '/pipeline'
     | '/admin/auditoria'
-    | '/admin/billing'
-    | '/admin/console'
-    | '/admin/ia'
-    | '/org/calendario'
-    | '/org/custodia'
-    | '/org/equipo'
-    | '/org/panel'
-    | '/org/reportes'
+    | '/admin/facturacion'
+    | '/admin/planes'
+    | '/admin/tenants'
   id:
     | '__root__'
     | '/'
-    | '/asambleas'
-    | '/comunicaciones'
-    | '/copropiedad'
-    | '/directorio'
-    | '/finanzas'
-    | '/mantenimiento'
-    | '/pqrs'
-    | '/zonas'
+    | '/agentes'
+    | '/asesores'
+    | '/automatizaciones'
+    | '/conversaciones'
+    | '/leads'
+    | '/lineas'
+    | '/metricas'
+    | '/pipeline'
     | '/admin/auditoria'
-    | '/admin/billing'
-    | '/admin/console'
-    | '/admin/ia'
-    | '/org/calendario'
-    | '/org/custodia'
-    | '/org/equipo'
-    | '/org/panel'
-    | '/org/reportes'
+    | '/admin/facturacion'
+    | '/admin/planes'
+    | '/admin/tenants'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AsambleasRoute: typeof AsambleasRoute
-  ComunicacionesRoute: typeof ComunicacionesRoute
-  CopropiedadRoute: typeof CopropiedadRoute
-  DirectorioRoute: typeof DirectorioRoute
-  FinanzasRoute: typeof FinanzasRoute
-  MantenimientoRoute: typeof MantenimientoRoute
-  PqrsRoute: typeof PqrsRoute
-  ZonasRoute: typeof ZonasRoute
+  AgentesRoute: typeof AgentesRoute
+  AsesoresRoute: typeof AsesoresRoute
+  AutomatizacionesRoute: typeof AutomatizacionesRoute
+  ConversacionesRoute: typeof ConversacionesRoute
+  LeadsRoute: typeof LeadsRoute
+  LineasRoute: typeof LineasRoute
+  MetricasRoute: typeof MetricasRoute
+  PipelineRoute: typeof PipelineRoute
   AdminAuditoriaRoute: typeof AdminAuditoriaRoute
-  AdminBillingRoute: typeof AdminBillingRoute
-  AdminConsoleRoute: typeof AdminConsoleRoute
-  AdminIaRoute: typeof AdminIaRoute
-  OrgCalendarioRoute: typeof OrgCalendarioRoute
-  OrgCustodiaRoute: typeof OrgCustodiaRoute
-  OrgEquipoRoute: typeof OrgEquipoRoute
-  OrgPanelRoute: typeof OrgPanelRoute
-  OrgReportesRoute: typeof OrgReportesRoute
+  AdminFacturacionRoute: typeof AdminFacturacionRoute
+  AdminPlanesRoute: typeof AdminPlanesRoute
+  AdminTenantsRoute: typeof AdminTenantsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/zonas': {
-      id: '/zonas'
-      path: '/zonas'
-      fullPath: '/zonas'
-      preLoaderRoute: typeof ZonasRouteImport
+    '/pipeline': {
+      id: '/pipeline'
+      path: '/pipeline'
+      fullPath: '/pipeline'
+      preLoaderRoute: typeof PipelineRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/pqrs': {
-      id: '/pqrs'
-      path: '/pqrs'
-      fullPath: '/pqrs'
-      preLoaderRoute: typeof PqrsRouteImport
+    '/metricas': {
+      id: '/metricas'
+      path: '/metricas'
+      fullPath: '/metricas'
+      preLoaderRoute: typeof MetricasRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/mantenimiento': {
-      id: '/mantenimiento'
-      path: '/mantenimiento'
-      fullPath: '/mantenimiento'
-      preLoaderRoute: typeof MantenimientoRouteImport
+    '/lineas': {
+      id: '/lineas'
+      path: '/lineas'
+      fullPath: '/lineas'
+      preLoaderRoute: typeof LineasRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/finanzas': {
-      id: '/finanzas'
-      path: '/finanzas'
-      fullPath: '/finanzas'
-      preLoaderRoute: typeof FinanzasRouteImport
+    '/leads': {
+      id: '/leads'
+      path: '/leads'
+      fullPath: '/leads'
+      preLoaderRoute: typeof LeadsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/directorio': {
-      id: '/directorio'
-      path: '/directorio'
-      fullPath: '/directorio'
-      preLoaderRoute: typeof DirectorioRouteImport
+    '/conversaciones': {
+      id: '/conversaciones'
+      path: '/conversaciones'
+      fullPath: '/conversaciones'
+      preLoaderRoute: typeof ConversacionesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/copropiedad': {
-      id: '/copropiedad'
-      path: '/copropiedad'
-      fullPath: '/copropiedad'
-      preLoaderRoute: typeof CopropiedadRouteImport
+    '/automatizaciones': {
+      id: '/automatizaciones'
+      path: '/automatizaciones'
+      fullPath: '/automatizaciones'
+      preLoaderRoute: typeof AutomatizacionesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/comunicaciones': {
-      id: '/comunicaciones'
-      path: '/comunicaciones'
-      fullPath: '/comunicaciones'
-      preLoaderRoute: typeof ComunicacionesRouteImport
+    '/asesores': {
+      id: '/asesores'
+      path: '/asesores'
+      fullPath: '/asesores'
+      preLoaderRoute: typeof AsesoresRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/asambleas': {
-      id: '/asambleas'
-      path: '/asambleas'
-      fullPath: '/asambleas'
-      preLoaderRoute: typeof AsambleasRouteImport
+    '/agentes': {
+      id: '/agentes'
+      path: '/agentes'
+      fullPath: '/agentes'
+      preLoaderRoute: typeof AgentesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -329,60 +264,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/org/reportes': {
-      id: '/org/reportes'
-      path: '/org/reportes'
-      fullPath: '/org/reportes'
-      preLoaderRoute: typeof OrgReportesRouteImport
+    '/admin/tenants': {
+      id: '/admin/tenants'
+      path: '/admin/tenants'
+      fullPath: '/admin/tenants'
+      preLoaderRoute: typeof AdminTenantsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/org/panel': {
-      id: '/org/panel'
-      path: '/org/panel'
-      fullPath: '/org/panel'
-      preLoaderRoute: typeof OrgPanelRouteImport
+    '/admin/planes': {
+      id: '/admin/planes'
+      path: '/admin/planes'
+      fullPath: '/admin/planes'
+      preLoaderRoute: typeof AdminPlanesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/org/equipo': {
-      id: '/org/equipo'
-      path: '/org/equipo'
-      fullPath: '/org/equipo'
-      preLoaderRoute: typeof OrgEquipoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/org/custodia': {
-      id: '/org/custodia'
-      path: '/org/custodia'
-      fullPath: '/org/custodia'
-      preLoaderRoute: typeof OrgCustodiaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/org/calendario': {
-      id: '/org/calendario'
-      path: '/org/calendario'
-      fullPath: '/org/calendario'
-      preLoaderRoute: typeof OrgCalendarioRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/ia': {
-      id: '/admin/ia'
-      path: '/admin/ia'
-      fullPath: '/admin/ia'
-      preLoaderRoute: typeof AdminIaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/console': {
-      id: '/admin/console'
-      path: '/admin/console'
-      fullPath: '/admin/console'
-      preLoaderRoute: typeof AdminConsoleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/billing': {
-      id: '/admin/billing'
-      path: '/admin/billing'
-      fullPath: '/admin/billing'
-      preLoaderRoute: typeof AdminBillingRouteImport
+    '/admin/facturacion': {
+      id: '/admin/facturacion'
+      path: '/admin/facturacion'
+      fullPath: '/admin/facturacion'
+      preLoaderRoute: typeof AdminFacturacionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/auditoria': {
@@ -397,33 +297,19 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AsambleasRoute: AsambleasRoute,
-  ComunicacionesRoute: ComunicacionesRoute,
-  CopropiedadRoute: CopropiedadRoute,
-  DirectorioRoute: DirectorioRoute,
-  FinanzasRoute: FinanzasRoute,
-  MantenimientoRoute: MantenimientoRoute,
-  PqrsRoute: PqrsRoute,
-  ZonasRoute: ZonasRoute,
+  AgentesRoute: AgentesRoute,
+  AsesoresRoute: AsesoresRoute,
+  AutomatizacionesRoute: AutomatizacionesRoute,
+  ConversacionesRoute: ConversacionesRoute,
+  LeadsRoute: LeadsRoute,
+  LineasRoute: LineasRoute,
+  MetricasRoute: MetricasRoute,
+  PipelineRoute: PipelineRoute,
   AdminAuditoriaRoute: AdminAuditoriaRoute,
-  AdminBillingRoute: AdminBillingRoute,
-  AdminConsoleRoute: AdminConsoleRoute,
-  AdminIaRoute: AdminIaRoute,
-  OrgCalendarioRoute: OrgCalendarioRoute,
-  OrgCustodiaRoute: OrgCustodiaRoute,
-  OrgEquipoRoute: OrgEquipoRoute,
-  OrgPanelRoute: OrgPanelRoute,
-  OrgReportesRoute: OrgReportesRoute,
+  AdminFacturacionRoute: AdminFacturacionRoute,
+  AdminPlanesRoute: AdminPlanesRoute,
+  AdminTenantsRoute: AdminTenantsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
