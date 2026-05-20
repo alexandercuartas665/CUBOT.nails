@@ -1,0 +1,17 @@
+namespace CubotTravels.Application.Tenancy;
+
+public enum ChatIngestResult
+{
+    Unauthorized,
+    Accepted,
+    Duplicate
+}
+
+/// <summary>
+/// Ingesta de mensajes entrantes desde el webhook de Evolution (modulo 2.3, ver ADR-0006).
+/// Opera con tenantId explicito (sin JWT) y es idempotente por ExternalMessageId.
+/// </summary>
+public interface IChatIngestService
+{
+    Task<ChatIngestResult> IngestAsync(Guid tenantId, string? providedToken, IngestMessageRequest payload, CancellationToken cancellationToken = default);
+}

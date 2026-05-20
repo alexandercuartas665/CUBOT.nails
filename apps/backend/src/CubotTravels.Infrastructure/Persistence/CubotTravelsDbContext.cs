@@ -35,6 +35,8 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadActivity> LeadActivities => Set<LeadActivity>();
     public DbSet<FollowUpTask> FollowUpTasks => Set<FollowUpTask>();
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<Message> Messages => Set<Message>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -52,6 +54,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
         configurationBuilder.Properties<WhatsAppLineStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<LeadStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<FollowUpTaskStatus>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<MessageDirection>().HaveConversion<string>().HaveMaxLength(40);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -197,6 +200,24 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
             b.HasOne(x => x.Lead).WithMany().HasForeignKey(x => x.LeadId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.Status });
             b.HasIndex(x => new { x.TenantId, x.DueAt });
+        });
+
+        modelBuilder.Entity<Conversation>(b =>
+        {
+            b.Property(x => x.ContactPhone).HasMaxLength(40).IsRequired();
+            b.Property(x => x.ContactName).HasMaxLength(200);
+            b.HasIndex(x => new { x.TenantId, x.ContactPhone }).IsUnique();
+        });
+
+        modelBuilder.Entity<Message>(b =>
+        {
+            b.Property(x => x.Body).HasMaxLength(4000).IsRequired();
+            b.Property(x => x.MessageType).HasMaxLength(40).IsRequired();
+            b.Property(x => x.ExternalId).HasMaxLength(200);
+            b.HasOne(x => x.Conversation).WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.ConversationId });
+            // Idempotencia de ingesta: un mensaje externo no se inserta dos veces.
+            b.HasIndex(x => new { x.TenantId, x.ExternalId }).IsUnique().HasFilter("external_id IS NOT NULL");
         });
     }
 
