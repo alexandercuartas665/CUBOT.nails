@@ -1,0 +1,23 @@
+using CubotTravels.Domain.Common;
+using CubotTravels.Domain.Enums;
+
+namespace CubotTravels.Domain.Entities;
+
+/// <summary>
+/// Suscripcion de un tenant a un plan. Tiene columna TenantId pero es ENTIDAD GLOBAL:
+/// la administra el Super Admin sobre todos los tenants, por eso NO es ITenantScoped.
+/// </summary>
+public class TenantSubscription : BaseEntity
+{
+    public Guid TenantId { get; set; }
+    public Tenant? Tenant { get; set; }
+
+    public Guid PlanId { get; set; }
+    public SaasPlan? Plan { get; set; }
+
+    public SubscriptionStatus Status { get; set; } = SubscriptionStatus.Trialing;
+    public BillingFrequency BillingFrequency { get; set; } = BillingFrequency.Monthly;
+    public DateTimeOffset StartsAt { get; set; }
+    public DateTimeOffset CurrentPeriodEndsAt { get; set; }
+    public DateTimeOffset? GracePeriodEndsAt { get; set; }
+}
