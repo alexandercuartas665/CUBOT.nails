@@ -1,5 +1,5 @@
 @page "/"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "PlatformOperator")]
 @inject ITenantAdminService TenantsSvc
 @inject IPlanAdminService PlansSvc
 

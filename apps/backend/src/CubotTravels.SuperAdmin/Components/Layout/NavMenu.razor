@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject NavigationManager Navigation
+@inject ITenantAdminService TenantsSvc
 
 <div class="cubot-brand">
     <div class="cubot-logo">
@@ -12,9 +13,18 @@
 </div>
 
 <div class="cubot-agency">
-    <div class="lbl">Plataforma</div>
-    <div class="name">CUBOT.travels</div>
-    <div class="meta">Consola de gobierno</div>
+    @if (_showAdmin)
+    {
+        <div class="lbl">Plataforma</div>
+        <div class="name">CUBOT.travels</div>
+        <div class="meta">Consola de gobierno</div>
+    }
+    else
+    {
+        <div class="lbl">Agencia</div>
+        <div class="name">@(_tenantName ?? "Mi agencia")</div>
+        <div class="meta">@_roleLabel</div>
+    }
 </div>
 
 <nav class="cubot-nav">
@@ -112,10 +122,10 @@
 </nav>
 
 <div class="cubot-user">
-    <div class="cubot-avatar">SA</div>
+    <div class="cubot-avatar">@_avatar</div>
     <div>
-        <div class="nm">Super Admin</div>
-        <div class="rl">Operador de plataforma</div>
+        <div class="nm">@(_userName ?? "Usuario")</div>
+        <div class="rl">@_roleLabel</div>
     </div>
     <span class="cubot-dot"></span>
 </div>
@@ -123,24 +133,58 @@
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
-    // El menu se arma por rol. Los operadores de plataforma (platform_role) ven el
-    // grupo Super Admin SaaS. Por ahora tambien previsualizan el producto del tenant
-    // (modulos en construccion); cuando exista login de tenant, esos usuarios veran
-    // unicamente sus grupos comerciales.
+    // El menu se arma por rol: el operador de plataforma (platform_role) ve el grupo
+    // Super Admin SaaS y previsualiza los modulos del tenant; el usuario de agencia
+    // (tenant_id) ve solo sus grupos comerciales y Mi agencia.
     private bool _showAdmin;
     private bool _showTenant;
+    private string? _userName;
+    private string? _tenantName;
+    private string _roleLabel = "Operador de plataforma";
+    private string _avatar = "SA";
 
     protected override async Task OnInitializedAsync()
     {
         Navigation.LocationChanged += OnLocationChanged;
 
-        if (AuthState is not null)
+        if (AuthState is null)
         {
-            var state = await AuthState;
-            var isPlatformOperator = state.User.FindFirst("platform_role") is not null;
-            _showAdmin = isPlatformOperator;
-            _showTenant = isPlatformOperator;
+            return;
         }
+
+        var state = await AuthState;
+        var isPlatformOperator = state.User.FindFirst("platform_role") is not null;
+        var tenantClaim = state.User.FindFirst("tenant_id")?.Value;
+        var isTenantUser = tenantClaim is not null;
+
+        _showAdmin = isPlatformOperator;
+        _showTenant = isPlatformOperator || isTenantUser;
+
+        _userName = state.User.Identity?.Name;
+        _avatar = Initials(_userName);
+
+        if (isPlatformOperator)
+        {
+            _roleLabel = "Operador de plataforma";
+        }
+        else if (isTenantUser)
+        {
+            _roleLabel = state.User.FindFirst("tenant_role")?.Value ?? "Agencia";
+            if (Guid.TryParse(tenantClaim, out var tenantId))
+            {
+                var tenant = await TenantsSvc.GetAsync(tenantId);
+                _tenantName = tenant?.Name;
+            }
+        }
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "U";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1
+            ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
+            : $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant();
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => StateHasChanged();

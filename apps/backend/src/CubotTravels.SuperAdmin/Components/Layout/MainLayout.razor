@@ -9,7 +9,7 @@
         <div class="cubot-topbar">
             <AuthorizeView>
                 <Authorized>
-                    <span class="cubot-user-chip">Super Admin · <strong>@context.User.Identity?.Name</strong></span>
+                    <span class="cubot-user-chip">@(context.User.FindFirst("platform_role") is not null ? "Operador" : "Agencia") · <strong>@context.User.Identity?.Name</strong></span>
                     <form method="post" action="/auth/logout" class="m-0">
                         <button type="submit" class="btn btn-sm btn-outline-secondary">Salir</button>
                     </form>

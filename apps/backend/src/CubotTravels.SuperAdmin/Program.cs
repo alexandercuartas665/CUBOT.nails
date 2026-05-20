@@ -28,11 +28,15 @@ builder.Services
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorizationBuilder()
+    // Operador de plataforma (Super Admin / roles internos): tiene claim platform_role.
+    .AddPolicy("PlatformOperator", p => p.RequireClaim("platform_role"))
+    // Miembro de una agencia: tiene claim tenant_id.
+    .AddPolicy("TenantMember", p => p.RequireClaim("tenant_id"));
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
-builder.Services.AddScoped<ITenantContext, SuperAdminContext>();
+builder.Services.AddScoped<ITenantContext, CookieUserContext>();
 
 var app = builder.Build();
 
@@ -72,7 +76,6 @@ app.MapPost("/auth/login", async (
 
     if (user is null
         || user.Status != PlatformUserStatus.Active
-        || user.PlatformRole != PlatformRole.SuperAdmin
         || string.IsNullOrEmpty(user.PasswordHash)
         || !hasher.Verify(user.PasswordHash, password ?? string.Empty))
     {
@@ -83,13 +86,40 @@ app.MapPost("/auth/login", async (
     {
         new(ClaimTypes.NameIdentifier, user.Id.ToString()),
         new(ClaimTypes.Name, user.DisplayName ?? user.Email),
-        new(ClaimTypes.Email, user.Email),
-        new("platform_role", PlatformRole.SuperAdmin.ToString())
+        new(ClaimTypes.Email, user.Email)
     };
+
+    string redirect;
+    if (user.PlatformRole is PlatformRole role)
+    {
+        // Operador de plataforma (Super Admin / roles internos).
+        claims.Add(new Claim("platform_role", role.ToString()));
+        redirect = "/";
+    }
+    else
+    {
+        // Usuario de agencia: resolver su membresia activa. Sin contexto de tenant aun,
+        // se ignora el filtro global para localizar la membresia por su PlatformUserId.
+        var membership = await db.TenantUsers
+            .IgnoreQueryFilters()
+            .Where(tu => tu.PlatformUserId == user.Id && tu.Status == PlatformUserStatus.Active)
+            .OrderBy(tu => tu.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (membership is null)
+        {
+            // Identidad valida pero sin rol de plataforma ni membresia activa: sin acceso.
+            return Results.Redirect("/login?error=1");
+        }
+
+        claims.Add(new Claim("tenant_id", membership.TenantId.ToString()));
+        claims.Add(new Claim("tenant_role", membership.TenantRole.ToString()));
+        redirect = "/mi-cuenta";
+    }
 
     var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
     await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
-    return Results.Redirect("/");
+    return Results.Redirect(redirect);
 }).DisableAntiforgery();
 
 app.MapPost("/auth/logout", async (HttpContext http) =>
