@@ -1,0 +1,11 @@
+name: cubot-prototype
+
+services:
+  web-prototype:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cubot-web-prototype
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
