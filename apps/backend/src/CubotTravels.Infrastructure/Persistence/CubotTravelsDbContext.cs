@@ -29,6 +29,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
     // Tenant-scoped (con filtro global de consulta)
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
     public DbSet<TenantConfiguration> TenantConfigurations => Set<TenantConfiguration>();
+    public DbSet<TenantEvolutionConfig> TenantEvolutionConfigs => Set<TenantEvolutionConfig>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -133,6 +134,16 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
         {
             b.Property(x => x.ConfigKey).HasMaxLength(150).IsRequired();
             b.HasIndex(x => new { x.TenantId, x.ConfigKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<TenantEvolutionConfig>(b =>
+        {
+            b.Property(x => x.BaseUrl).HasMaxLength(500).IsRequired();
+            b.Property(x => x.InstanceName).HasMaxLength(200).IsRequired();
+            b.Property(x => x.ApiTokenEncrypted).IsRequired();
+            b.Property(x => x.WebhookUrl).HasMaxLength(500);
+            // Una configuracion Evolution por tenant.
+            b.HasIndex(x => x.TenantId).IsUnique();
         });
     }
 

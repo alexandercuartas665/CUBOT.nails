@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<IPaymentAdminService, PaymentAdminService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<Tenancy.ITenantUserService, Tenancy.TenantUserService>();
+        services.AddScoped<Tenancy.IEvolutionConfigService, Tenancy.EvolutionConfigService>();
         return services;
     }
 }

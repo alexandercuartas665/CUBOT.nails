@@ -13,6 +13,7 @@ public interface IApplicationDbContext
     DbSet<TenantUser> TenantUsers { get; }
     DbSet<Tenant> Tenants { get; }
     DbSet<TenantConfiguration> TenantConfigurations { get; }
+    DbSet<TenantEvolutionConfig> TenantEvolutionConfigs { get; }
     DbSet<SaasPlan> SaasPlans { get; }
     DbSet<SaasPlanLimit> SaasPlanLimits { get; }
     DbSet<TenantSubscription> TenantSubscriptions { get; }

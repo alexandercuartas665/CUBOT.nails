@@ -3,6 +3,7 @@ using CubotTravels.Application.Common.Auth;
 using CubotTravels.Infrastructure.Auth;
 using CubotTravels.Infrastructure.Persistence;
 using CubotTravels.Infrastructure.Persistence.Interceptors;
+using CubotTravels.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,6 +40,8 @@ public static class DependencyInjection
 
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
+        services.AddDataProtection();
+        services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         services.AddScoped<DatabaseSeeder>();
 
         return services;

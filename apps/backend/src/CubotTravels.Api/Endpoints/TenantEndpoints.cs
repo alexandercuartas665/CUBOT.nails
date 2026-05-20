@@ -36,6 +36,23 @@ public static class TenantEndpoints
             var result = await svc.SetStatusAsync(id, request.Status, ActorId(user), ct);
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
+
+        // --- Configuracion Evolution API del tenant (modulo 1.3) ---
+        var evolution = app.MapGroup("/tenant/evolution").RequireAuthorization("TenantAdmin");
+
+        evolution.MapGet("", async (IEvolutionConfigService svc, CancellationToken ct) =>
+        {
+            var config = await svc.GetAsync(ct);
+            return config is null ? Results.NoContent() : Results.Ok(config);
+        });
+
+        evolution.MapPut("", async (UpsertEvolutionConfigRequest request, ClaimsPrincipal user, IEvolutionConfigService svc, CancellationToken ct) =>
+        {
+            var config = await svc.UpsertAsync(request, ActorId(user), ct);
+            return config is null
+                ? Results.BadRequest(new { error = "No hay tenant activo o falta el token en el alta." })
+                : Results.Ok(config);
+        });
     }
 
     private static Guid ActorId(ClaimsPrincipal user) =>
