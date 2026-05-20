@@ -7,7 +7,7 @@
     </div>
     <div>
         <div class="cubot-brand-name">CUBOT<span>.travels</span></div>
-        <div class="cubot-brand-sub">Super Admin SaaS</div>
+        <div class="cubot-brand-sub">CRM Conversacional</div>
     </div>
 </div>
 
@@ -18,32 +18,90 @@
 </div>
 
 <nav class="cubot-nav">
-    <div class="cubot-nav-label">Gobierno SaaS</div>
+    @if (_showTenant)
+    {
+        <div class="cubot-nav-label">Operacion Comercial</div>
 
-    <NavLink class="cubot-nav-link" href="" Match="NavLinkMatch.All">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-        <span>Dashboard</span>
-    </NavLink>
+        <NavLink class="cubot-nav-link" href="pipeline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/></svg>
+            <span>Pipeline</span>
+            <span class="cubot-nav-soon">Pronto</span>
+        </NavLink>
 
-    <NavLink class="cubot-nav-link" href="tenants">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/></svg>
-        <span>Agencias</span>
-    </NavLink>
+        <NavLink class="cubot-nav-link" href="conversaciones">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>
+            <span>Conversaciones</span>
+            <span class="cubot-nav-soon">Pronto</span>
+        </NavLink>
 
-    <NavLink class="cubot-nav-link" href="plans">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-        <span>Planes</span>
-    </NavLink>
+        <NavLink class="cubot-nav-link" href="leads">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 21a6 6 0 0 0-12 0"/><circle cx="12" cy="11" r="4"/><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+            <span>Leads</span>
+            <span class="cubot-nav-soon">Pronto</span>
+        </NavLink>
 
-    <NavLink class="cubot-nav-link" href="facturacion">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg>
-        <span>Facturacion</span>
-    </NavLink>
+        <NavLink class="cubot-nav-link" href="asesores">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Asesores</span>
+            <span class="cubot-nav-soon">Pronto</span>
+        </NavLink>
 
-    <NavLink class="cubot-nav-link" href="auditoria">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>
-        <span>Auditoria</span>
-    </NavLink>
+        <div class="cubot-nav-label">Infraestructura & IA</div>
+
+        <NavLink class="cubot-nav-link" href="lineas">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+            <span>Lineas WhatsApp</span>
+            <span class="cubot-nav-soon">Pronto</span>
+        </NavLink>
+
+        <NavLink class="cubot-nav-link" href="agentes">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+            <span>Agentes IA</span>
+            <span class="cubot-nav-soon">Pronto</span>
+        </NavLink>
+
+        <NavLink class="cubot-nav-link" href="automatizaciones">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+            <span>Automatizaciones</span>
+            <span class="cubot-nav-soon">Pronto</span>
+        </NavLink>
+
+        <NavLink class="cubot-nav-link" href="metricas">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+            <span>Metricas</span>
+            <span class="cubot-nav-soon">Pronto</span>
+        </NavLink>
+    }
+
+    @if (_showAdmin)
+    {
+        <div class="cubot-nav-label">Super Admin SaaS</div>
+
+        <NavLink class="cubot-nav-link" href="" Match="NavLinkMatch.All">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            <span>Dashboard</span>
+        </NavLink>
+
+        <NavLink class="cubot-nav-link" href="tenants">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/></svg>
+            <span>Agencias</span>
+        </NavLink>
+
+        <NavLink class="cubot-nav-link" href="plans">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+            <span>Planes</span>
+        </NavLink>
+
+        <NavLink class="cubot-nav-link" href="facturacion">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg>
+            <span>Facturacion</span>
+        </NavLink>
+
+        <NavLink class="cubot-nav-link" href="auditoria">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>
+            <span>Auditoria</span>
+        </NavLink>
+    }
 </nav>
 
 <div class="cubot-user">
@@ -56,7 +114,28 @@
 </div>
 
 @code {
-    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    // El menu se arma por rol. Los operadores de plataforma (platform_role) ven el
+    // grupo Super Admin SaaS. Por ahora tambien previsualizan el producto del tenant
+    // (modulos en construccion); cuando exista login de tenant, esos usuarios veran
+    // unicamente sus grupos comerciales.
+    private bool _showAdmin;
+    private bool _showTenant;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            var isPlatformOperator = state.User.FindFirst("platform_role") is not null;
+            _showAdmin = isPlatformOperator;
+            _showTenant = isPlatformOperator;
+        }
+    }
+
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => StateHasChanged();
     public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
 }
