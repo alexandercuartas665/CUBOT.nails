@@ -1,0 +1,281 @@
+@page "/mi-cuenta"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@inject ITenantAdminService TenantsSvc
+@inject ISubscriptionAdminService SubsSvc
+@inject IPaymentAdminService PaymentsSvc
+@inject IPlanAdminService PlansSvc
+
+<PageTitle>Mi cuenta - CUBOT.travels</PageTitle>
+
+<div class="module-head">
+    <div>
+        <div class="module-eyebrow">
+            <div class="module-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <span>Mi agencia</span>
+        </div>
+        <h1 class="page-title" style="margin-top:12px;">Mi cuenta</h1>
+        <p class="page-sub" style="margin-bottom:0;">Tu plan activo, limites incluidos, facturas y cambio de plan.</p>
+    </div>
+    @if (_tenants.Count > 0)
+    {
+        <div>
+            <div class="wlbl" style="margin-bottom:4px;">Viendo como (vista de operador)</div>
+            <select class="form-control" style="max-width:280px;" @bind="_tenantId" @bind:after="ReloadAsync">
+                @foreach (var t in _tenants)
+                {
+                    <option value="@t.Id">@t.Name</option>
+                }
+            </select>
+        </div>
+    }
+</div>
+
+@if (_loading)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    <div class="acct-grid">
+        <div class="card" style="padding:22px 24px;">
+            <div class="wlbl">Plan activo</div>
+            @if (_sub is not null && _plan is not null)
+            {
+                <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px;">
+                    <div style="font-size:1.6rem;font-weight:800;">@_plan.Name</div>
+                    <span class="badge bg-@SubStatusColor(_sub.Status)">@_sub.Status</span>
+                </div>
+                <div class="pprice" style="font-size:1.6rem;font-weight:800;margin-top:10px;">
+                    @($"$ {Price(_plan, _sub.BillingFrequency):N0}") <small style="font-size:0.85rem;font-weight:600;color:var(--muted-foreground);">@_plan.Currency / @FreqText(_sub.BillingFrequency)</small>
+                </div>
+                <div class="text-muted" style="font-size:12px;margin-top:8px;">Proximo corte: @_sub.CurrentPeriodEndsAt.LocalDateTime.ToString("dd MMM yyyy")</div>
+                <button class="btn btn-primary" style="margin-top:18px;" @onclick="OpenChange">Cambiar de plan</button>
+            }
+            else
+            {
+                <p class="text-muted" style="margin-top:8px;">Esta agencia no tiene un plan activo.</p>
+                <button class="btn btn-primary" style="margin-top:10px;" @onclick="OpenChange">Elegir un plan</button>
+            }
+        </div>
+
+        <div class="card" style="padding:22px 24px;">
+            <div class="wlbl">Limites de tu plan</div>
+            @if (_plan is not null && _plan.Limits.Count > 0)
+            {
+                <ul class="plan-features" style="margin-top:12px;">
+                    @foreach (var l in _plan.Limits)
+                    {
+                        <li>
+                            <svg class="plan-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                            <span>@FriendlyLimit(l)</span>
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <p class="text-muted" style="margin-top:8px;">Sin limites definidos.</p>
+            }
+        </div>
+    </div>
+
+    <h2 style="font-size:1.05rem;font-weight:700;margin:26px 0 12px;">Mis facturas</h2>
+    @if (_payments.Count == 0)
+    {
+        <p class="text-muted">Aun no tienes facturas registradas.</p>
+    }
+    else
+    {
+        <div class="card" style="max-width:1040px;padding:6px 16px;">
+            <table class="table table-hover align-middle" style="margin-bottom:0;">
+                <thead>
+                    <tr><th>Factura</th><th class="text-end">Monto</th><th>Fecha</th><th>Periodo</th><th>Estado</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in _payments)
+                    {
+                        <tr>
+                            <td style="font-family:var(--bs-font-monospace);font-size:12px;">@Reference(p)</td>
+                            <td class="text-end" style="font-weight:600;font-variant-numeric:tabular-nums;">@($"$ {p.Amount:N0}")</td>
+                            <td style="font-size:12px;color:var(--muted-foreground);">@p.CreatedAt.LocalDateTime.ToString("dd MMM yyyy")</td>
+                            <td style="font-size:12px;color:var(--muted-foreground);">@p.BillingPeriodStart.LocalDateTime.ToString("dd MMM") - @p.BillingPeriodEnd.LocalDateTime.ToString("dd MMM yyyy")</td>
+                            <td><span class="badge bg-@PayStatusColor(p.Status)">@p.Status</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@if (_changeOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog">
+            <div class="modal-head">
+                <h3>Cambiar de plan</h3>
+                <button class="modal-close" @onclick="CloseChange">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (_plans.Count == 0)
+                {
+                    <p class="text-muted">No hay planes disponibles.</p>
+                }
+                else
+                {
+                    <div class="field">
+                        <label class="form-label">Plan</label>
+                        <select class="form-control" @bind="_changePlanId">
+                            @foreach (var p in _plans)
+                            {
+                                <option value="@p.Id">@p.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Frecuencia de cobro</label>
+                        <select class="form-control" @bind="_changeFreq">
+                            <option value="@BillingFrequency.Monthly">Mensual</option>
+                            <option value="@BillingFrequency.Yearly">Anual</option>
+                        </select>
+                    </div>
+                    <p class="text-muted" style="font-size:12px;">El cambio aplica de inmediato y se recalcula la fecha de corte. El cobro/prorrateo se procesara por Wompi (pendiente).</p>
+                }
+                @if (_changeError is not null)
+                {
+                    <div class="text-danger small">@_changeError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="CloseChange">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmChangeAsync" disabled="@(_changeBusy || _plans.Count == 0)">Confirmar cambio</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<TenantListItem> _tenants = new();
+    private List<PlanDetail> _plans = new();
+    private Guid _tenantId;
+    private bool _loading = true;
+
+    private SubscriptionDetail? _sub;
+    private PlanDetail? _plan;
+    private List<PaymentDetail> _payments = new();
+
+    private bool _changeOpen;
+    private bool _changeBusy;
+    private string? _changeError;
+    private Guid _changePlanId;
+    private BillingFrequency _changeFreq = BillingFrequency.Monthly;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tenants = (await TenantsSvc.ListAsync()).ToList();
+        _plans = (await PlansSvc.ListAsync()).ToList();
+        _tenantId = _tenants.FirstOrDefault()?.Id ?? Guid.Empty;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        if (_tenantId == Guid.Empty)
+        {
+            _sub = null; _plan = null; _payments = new();
+            _loading = false;
+            return;
+        }
+        _sub = (await SubsSvc.ListByTenantAsync(_tenantId)).FirstOrDefault();
+        _plan = _sub is null ? null : _plans.FirstOrDefault(p => p.Id == _sub.PlanId);
+        _payments = (await PaymentsSvc.ListAsync(_tenantId)).ToList();
+        _loading = false;
+    }
+
+    private void OpenChange()
+    {
+        _changeError = null;
+        _changePlanId = _sub?.PlanId ?? _plans.FirstOrDefault()?.Id ?? Guid.Empty;
+        _changeFreq = _sub?.BillingFrequency ?? BillingFrequency.Monthly;
+        _changeOpen = true;
+    }
+
+    private void CloseChange() => _changeOpen = false;
+
+    private async Task ConfirmChangeAsync()
+    {
+        _changeError = null;
+        _changeBusy = true;
+        try
+        {
+            if (_changePlanId == Guid.Empty)
+            {
+                _changeError = "Selecciona un plan.";
+                return;
+            }
+            var actor = await ActorAsync();
+            var result = await SubsSvc.ChangePlanAsync(_tenantId, _changePlanId, _changeFreq, actor);
+            if (result is null)
+            {
+                _changeError = "No se pudo cambiar el plan.";
+                return;
+            }
+            _changeOpen = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _changeError = ex.Message;
+        }
+        finally
+        {
+            _changeBusy = false;
+        }
+    }
+
+    private async Task<Guid> ActorAsync()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = await AuthState;
+        return Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+    }
+
+    private static decimal Price(PlanDetail p, BillingFrequency freq) =>
+        (freq == BillingFrequency.Yearly ? p.YearlyPrice : p.MonthlyPrice) ?? 0m;
+
+    private static string FreqText(BillingFrequency freq) => freq == BillingFrequency.Yearly ? "ano" : "mes";
+
+    private static string FriendlyLimit(PlanLimitDto l) => l.LimitKey switch
+    {
+        "max_users" => $"{l.LimitValue} usuarios",
+        "max_whatsapp_lines" => $"{l.LimitValue} lineas WhatsApp",
+        "max_ai_tokens_monthly" => $"{l.LimitValue:N0} llamadas IA",
+        _ => $"{l.LimitValue:N0} {l.LimitKey}"
+    };
+
+    private static string Reference(PaymentDetail p) =>
+        string.IsNullOrWhiteSpace(p.ProviderReference) ? $"PG-{p.Id.ToString()[..8]}" : p.ProviderReference!;
+
+    private static string SubStatusColor(SubscriptionStatus status) => status switch
+    {
+        SubscriptionStatus.Active => "success",
+        SubscriptionStatus.Trialing => "info",
+        SubscriptionStatus.PendingPayment or SubscriptionStatus.PastDue or SubscriptionStatus.GracePeriod => "warning",
+        SubscriptionStatus.Suspended or SubscriptionStatus.Cancelled => "danger",
+        _ => "secondary"
+    };
+
+    private static string PayStatusColor(PaymentStatus status) => status switch
+    {
+        PaymentStatus.Approved => "success",
+        PaymentStatus.Pending or PaymentStatus.NeedsReview => "warning",
+        PaymentStatus.Declined or PaymentStatus.Voided or PaymentStatus.Error => "danger",
+        _ => "secondary"
+    };
+}

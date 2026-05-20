@@ -254,5 +254,8 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .wlbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-foreground); font-weight: 700; }
 .wval { font-size: 0.92rem; font-weight: 600; margin-top: 2px; margin-bottom: 4px; }
 
+/* ===== Mi cuenta (tenant) ===== */
+.acct-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; max-width: 1040px; }
+
 /* ===== Nav: insignia "en construccion" ===== */
 .cubot-nav-soon { margin-left: auto; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 6px; background: var(--muted); color: var(--muted-foreground); }
