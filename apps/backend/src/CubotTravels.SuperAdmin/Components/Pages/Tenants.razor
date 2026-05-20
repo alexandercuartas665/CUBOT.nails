@@ -2,6 +2,8 @@
 @attribute [Authorize]
 @rendermode InteractiveServer
 @inject ITenantAdminService TenantsSvc
+@inject ISubscriptionAdminService SubsSvc
+@inject IPlanAdminService PlansSvc
 
 <PageTitle>Agencias - CUBOT.travels</PageTitle>
 
@@ -58,10 +60,10 @@ else
     }
     else
     {
-        <div class="card" style="max-width:1000px;padding:6px 16px;">
+        <div class="card" style="max-width:1100px;padding:6px 16px;">
             <table class="table table-hover align-middle" style="margin-bottom:0;">
                 <thead>
-                    <tr><th>Agencia</th><th>Pais</th><th>Estado</th><th>Tipo</th><th>Creada</th><th class="text-end">Acciones</th></tr>
+                    <tr><th>Agencia</th><th>Pais</th><th>Estado</th><th>Plan / Suscripcion</th><th>Tipo</th><th>Creada</th><th class="text-end">Acciones</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var t in _tenants)
@@ -70,9 +72,22 @@ else
                             <td style="font-weight:600;">@t.Name</td>
                             <td>@(t.Country ?? "-")</td>
                             <td><span class="badge bg-@StatusColor(t.Status)">@t.Status</span></td>
+                            <td>
+                                @if (_subs.TryGetValue(t.Id, out var sub) && sub is not null)
+                                {
+                                    <span style="font-weight:600;">@PlanName(sub.PlanId)</span>
+                                    <span class="badge bg-@SubStatusColor(sub.Status)" style="margin-left:6px;">@sub.Status</span>
+                                    <div class="text-muted" style="font-size:11px;">@sub.BillingFrequency · corte @sub.CurrentPeriodEndsAt.LocalDateTime.ToString("yyyy-MM-dd")</div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Sin plan</span>
+                                }
+                            </td>
                             <td>@t.Kind</td>
                             <td>@t.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd")</td>
                             <td class="text-end">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenSubscription(t)">Suscripcion</button>
                                 @if (t.Status != TenantStatus.Active)
                                 {
                                     <button class="btn btn-sm btn-outline-success" @onclick="() => ChangeStatusAsync(t.Id, TenantStatus.Active)">Activar</button>
@@ -126,6 +141,52 @@ else
     </div>
 }
 
+@if (_subModalOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog">
+            <div class="modal-head">
+                <h3>Suscripcion &mdash; @_subTenantName</h3>
+                <button class="modal-close" @onclick="CloseSubscription">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (_plans.Count == 0)
+                {
+                    <p class="text-muted">No hay planes todavia. Crea uno primero en el modulo Planes.</p>
+                }
+                else
+                {
+                    <div class="field">
+                        <label class="form-label">Plan</label>
+                        <select class="form-control" @bind="_subPlanId">
+                            @foreach (var p in _plans)
+                            {
+                                <option value="@p.Id">@p.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Frecuencia de cobro</label>
+                        <select class="form-control" @bind="_subFreq">
+                            <option value="@BillingFrequency.Monthly">Mensual</option>
+                            <option value="@BillingFrequency.Yearly">Anual</option>
+                        </select>
+                    </div>
+                    <p class="text-muted" style="font-size:12px;">Se crea una suscripcion activa y se calcula la fecha de corte segun la frecuencia.</p>
+                }
+                @if (_subError is not null)
+                {
+                    <div class="text-danger small">@_subError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="CloseSubscription">Cancelar</button>
+                <button class="btn btn-primary" @onclick="AssignSubscriptionAsync" disabled="@(_subBusy || _plans.Count == 0)">Asignar plan</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
@@ -137,9 +198,31 @@ else
     private bool _busy;
     private string? _error;
 
+    private List<PlanDetail> _plans = new();
+    private Dictionary<Guid, string> _planNames = new();
+    private Dictionary<Guid, SubscriptionDetail?> _subs = new();
+
+    private bool _subModalOpen;
+    private bool _subBusy;
+    private string? _subError;
+    private Guid _subTenantId;
+    private string _subTenantName = string.Empty;
+    private Guid _subPlanId;
+    private BillingFrequency _subFreq = BillingFrequency.Monthly;
+
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
-    private async Task ReloadAsync() => _tenants = (await TenantsSvc.ListAsync()).ToList();
+    private async Task ReloadAsync()
+    {
+        _tenants = (await TenantsSvc.ListAsync()).ToList();
+        _plans = (await PlansSvc.ListAsync()).ToList();
+        _planNames = _plans.ToDictionary(p => p.Id, p => p.Name);
+        _subs = new Dictionary<Guid, SubscriptionDetail?>();
+        foreach (var t in _tenants)
+        {
+            _subs[t.Id] = (await SubsSvc.ListByTenantAsync(t.Id)).FirstOrDefault();
+        }
+    }
 
     private int Count(TenantStatus status) => _tenants?.Count(t => t.Status == status) ?? 0;
 
@@ -189,6 +272,60 @@ else
         var state = await AuthState;
         return Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
     }
+
+    private string PlanName(Guid planId) => _planNames.TryGetValue(planId, out var n) ? n : "Plan";
+
+    private void OpenSubscription(TenantListItem t)
+    {
+        _subError = null;
+        _subTenantId = t.Id;
+        _subTenantName = t.Name;
+        _subPlanId = _plans.FirstOrDefault()?.Id ?? Guid.Empty;
+        _subFreq = BillingFrequency.Monthly;
+        _subModalOpen = true;
+    }
+
+    private void CloseSubscription() => _subModalOpen = false;
+
+    private async Task AssignSubscriptionAsync()
+    {
+        _subError = null;
+        _subBusy = true;
+        try
+        {
+            if (_subPlanId == Guid.Empty)
+            {
+                _subError = "Selecciona un plan.";
+                return;
+            }
+            var actor = await ActorAsync();
+            var result = await SubsSvc.AssignAsync(new AssignSubscriptionRequest(_subTenantId, _subPlanId, _subFreq), actor);
+            if (result is null)
+            {
+                _subError = "No se pudo asignar la suscripcion (tenant o plan inexistente).";
+                return;
+            }
+            _subModalOpen = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _subError = ex.Message;
+        }
+        finally
+        {
+            _subBusy = false;
+        }
+    }
+
+    private static string SubStatusColor(SubscriptionStatus status) => status switch
+    {
+        SubscriptionStatus.Active => "success",
+        SubscriptionStatus.Trialing => "info",
+        SubscriptionStatus.PendingPayment or SubscriptionStatus.PastDue or SubscriptionStatus.GracePeriod => "warning",
+        SubscriptionStatus.Suspended or SubscriptionStatus.Cancelled => "danger",
+        _ => "secondary"
+    };
 
     private static string StatusColor(TenantStatus status) => status switch
     {

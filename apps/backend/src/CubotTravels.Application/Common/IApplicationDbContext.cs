@@ -25,6 +25,7 @@ public interface IApplicationDbContext
     DbSet<SaasPlanLimit> SaasPlanLimits { get; }
     DbSet<TenantSubscription> TenantSubscriptions { get; }
     DbSet<TenantPayment> TenantPayments { get; }
+    DbSet<WompiMasterConfig> WompiMasterConfigs { get; }
     DbSet<SuperAdminAuditLog> SuperAdminAuditLogs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

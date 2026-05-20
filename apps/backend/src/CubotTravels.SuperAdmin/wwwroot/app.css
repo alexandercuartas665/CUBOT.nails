@@ -250,5 +250,9 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .coming-soon h3 { font-size: 1.1rem; font-weight: 700; margin: 0; }
 .coming-soon p { font-size: 0.9rem; color: var(--muted-foreground); margin: 6px 0 0; max-width: 420px; }
 
+/* ===== Pares etiqueta/valor (config Wompi) ===== */
+.wlbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-foreground); font-weight: 700; }
+.wval { font-size: 0.92rem; font-weight: 600; margin-top: 2px; margin-bottom: 4px; }
+
 /* ===== Nav: insignia "en construccion" ===== */
 .cubot-nav-soon { margin-left: auto; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 6px; background: var(--muted); color: var(--muted-foreground); }

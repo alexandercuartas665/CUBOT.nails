@@ -23,6 +23,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
     public DbSet<SaasPlanLimit> SaasPlanLimits => Set<SaasPlanLimit>();
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
     public DbSet<TenantPayment> TenantPayments => Set<TenantPayment>();
+    public DbSet<WompiMasterConfig> WompiMasterConfigs => Set<WompiMasterConfig>();
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
     public DbSet<SuperAdminAuditLog> SuperAdminAuditLogs => Set<SuperAdminAuditLog>();
 
@@ -55,6 +56,8 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
         configurationBuilder.Properties<LeadStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<FollowUpTaskStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<MessageDirection>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<WompiEnvironment>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<WompiIntegrationStatus>().HaveConversion<string>().HaveMaxLength(40);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -131,6 +134,13 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
             b.Property(x => x.NewValue).HasColumnType("jsonb");
             b.HasIndex(x => x.TenantId);
             b.HasIndex(x => x.CreatedAt);
+        });
+
+        modelBuilder.Entity<WompiMasterConfig>(b =>
+        {
+            b.Property(x => x.PublicKey).HasMaxLength(200);
+            b.Property(x => x.WebhookEndpoint).HasMaxLength(500);
+            b.Property(x => x.Currency).HasMaxLength(10).IsRequired();
         });
 
         modelBuilder.Entity<TenantUser>(b =>
