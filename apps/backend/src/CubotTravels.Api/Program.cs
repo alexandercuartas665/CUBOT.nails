@@ -9,6 +9,7 @@ using CubotTravels.Application.Common.Auth;
 using CubotTravels.Domain.Enums;
 using CubotTravels.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -75,6 +76,15 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+
+    // Auto-migracion + seed solo en local. El flag permite desactivarlo (p.ej. en tests).
+    if (app.Configuration.GetValue("Database:AutoMigrate", true))
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CubotTravels.Infrastructure.Persistence.CubotTravelsDbContext>();
+        await db.Database.MigrateAsync();
+        await scope.ServiceProvider.GetRequiredService<CubotTravels.Infrastructure.Persistence.DatabaseSeeder>().SeedAsync();
+    }
 }
 
 app.UseHttpsRedirection();

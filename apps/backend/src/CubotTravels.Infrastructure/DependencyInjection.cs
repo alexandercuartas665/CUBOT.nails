@@ -39,6 +39,7 @@ public static class DependencyInjection
 
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<DatabaseSeeder>();
 
         return services;
     }

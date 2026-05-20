@@ -32,6 +32,7 @@ public sealed class CubotApiFactory : WebApplicationFactory<Program>, IAsyncLife
         builder.UseEnvironment("Development");
         builder.UseSetting("ConnectionStrings:Default", _db.GetConnectionString());
         builder.UseSetting("Jwt:SigningKey", SigningKey);
+        builder.UseSetting("Database:AutoMigrate", "false");
     }
 
     public async Task InitializeAsync()

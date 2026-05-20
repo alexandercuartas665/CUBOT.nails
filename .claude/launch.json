@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "superadmin",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "apps/backend/src/CubotTravels.SuperAdmin/CubotTravels.SuperAdmin.csproj",
+        "--launch-profile",
+        "http"
+      ],
+      "port": 5232
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "apps/backend/src/CubotTravels.Web/CubotTravels.Web/CubotTravels.Web.csproj",
+        "--launch-profile",
+        "http"
+      ],
+      "port": 5070
+    }
+  ]
+}
