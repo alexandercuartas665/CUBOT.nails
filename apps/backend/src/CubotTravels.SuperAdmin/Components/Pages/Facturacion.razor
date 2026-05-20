@@ -50,9 +50,12 @@
         </div>
         <div class="field-row" style="max-width:760px;">
             <div><div class="wlbl">Secret de eventos</div><div class="wval" style="font-family:var(--bs-font-monospace);font-size:12px;">@(_wompi.EventsSecretMasked ?? "—")</div></div>
+            <div><div class="wlbl">Secret de integridad</div><div class="wval" style="font-family:var(--bs-font-monospace);font-size:12px;">@(_wompi.IntegritySecretMasked ?? "—")</div></div>
+        </div>
+        <div class="field-row" style="max-width:760px;">
+            <div><div class="wlbl">Webhook</div><div class="wval" style="font-family:var(--bs-font-monospace);font-size:12px;">@(_wompi.WebhookEndpoint ?? "—")</div></div>
             <div><div class="wlbl">Ultima validacion</div><div class="wval">@(_wompi.LastValidatedAt is { } v ? v.LocalDateTime.ToString("dd MMM yyyy HH:mm") : "Nunca")</div></div>
         </div>
-        <div style="max-width:760px;"><div class="wlbl">Webhook</div><div class="wval" style="font-family:var(--bs-font-monospace);font-size:12px;">@(_wompi.WebhookEndpoint ?? "—")</div></div>
     }
 
     @if (_wompiMsg is not null)
@@ -162,6 +165,10 @@ else
                     <input class="form-control" type="password" @bind="_wf.EventsSecret" autocomplete="new-password" placeholder="@(_wompi?.HasEventsSecret == true ? "Dejar vacio para conservar el actual" : "")" />
                 </div>
                 <div class="field">
+                    <label class="form-label">Secret de integridad (cobros)</label>
+                    <input class="form-control" type="password" @bind="_wf.IntegritySecret" autocomplete="new-password" placeholder="@(_wompi?.HasIntegritySecret == true ? "Dejar vacio para conservar el actual" : "")" />
+                </div>
+                <div class="field">
                     <label class="form-label">Endpoint de webhook</label>
                     <input class="form-control" @bind="_wf.WebhookEndpoint" placeholder="https://..." />
                 </div>
@@ -218,6 +225,7 @@ else
         _wf.PublicKey = _wompi?.PublicKey;
         _wf.PrivateKey = null;     // se conserva si se deja vacio
         _wf.EventsSecret = null;   // idem
+        _wf.IntegritySecret = null;
         _wf.WebhookEndpoint = _wompi?.WebhookEndpoint;
         _wf.Currency = _wompi?.Currency ?? "COP";
         _wf.MaxRetries = _wompi?.MaxRetries ?? 3;
@@ -234,7 +242,7 @@ else
         {
             var actor = await ActorAsync();
             var request = new SaveWompiConfigRequest(_wf.Environment, _wf.PublicKey, _wf.PrivateKey, _wf.EventsSecret,
-                _wf.WebhookEndpoint, _wf.Currency, _wf.MaxRetries);
+                _wf.IntegritySecret, _wf.WebhookEndpoint, _wf.Currency, _wf.MaxRetries);
             _wompi = await WompiSvc.SaveAsync(request, actor);
             _wompiMsg = null;
             _wompiModalOpen = false;
@@ -298,6 +306,7 @@ else
         public string? PublicKey { get; set; }
         public string? PrivateKey { get; set; }
         public string? EventsSecret { get; set; }
+        public string? IntegritySecret { get; set; }
         public string? WebhookEndpoint { get; set; }
         public string Currency { get; set; } = "COP";
         public int MaxRetries { get; set; } = 3;

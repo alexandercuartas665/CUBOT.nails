@@ -8,13 +8,15 @@ public sealed record WompiConfigDto(
     string? PublicKey,
     string? PrivateKeyMasked,
     string? EventsSecretMasked,
+    string? IntegritySecretMasked,
     string? WebhookEndpoint,
     string Currency,
     int MaxRetries,
     WompiIntegrationStatus Status,
     DateTimeOffset? LastValidatedAt,
     bool HasPrivateKey,
-    bool HasEventsSecret);
+    bool HasEventsSecret,
+    bool HasIntegritySecret);
 
 /// <summary>
 /// Alta/edicion de la config Wompi. PrivateKey y EventsSecret son opcionales: si vienen vacios
@@ -25,6 +27,7 @@ public sealed record SaveWompiConfigRequest(
     string? PublicKey,
     string? PrivateKey,
     string? EventsSecret,
+    string? IntegritySecret,
     string? WebhookEndpoint,
     string Currency,
     int MaxRetries);

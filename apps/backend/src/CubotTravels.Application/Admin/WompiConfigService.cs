@@ -55,6 +55,10 @@ public sealed class WompiConfigService : IWompiConfigService
         {
             config.EventsSecretEncrypted = _secretProtector.Protect(request.EventsSecret.Trim());
         }
+        if (!string.IsNullOrWhiteSpace(request.IntegritySecret))
+        {
+            config.IntegritySecretEncrypted = _secretProtector.Protect(request.IntegritySecret.Trim());
+        }
 
         // Guardar invalida la validacion previa: hay que volver a validar.
         config.Status = HasCredentials(config) ? WompiIntegrationStatus.Configured : WompiIntegrationStatus.NotConfigured;
@@ -100,6 +104,10 @@ public sealed class WompiConfigService : IWompiConfigService
         {
             return (false, "Falta el secret de eventos para validar webhooks.");
         }
+        if (string.IsNullOrWhiteSpace(c.IntegritySecretEncrypted))
+        {
+            return (false, "Falta el secret de integridad para firmar los cobros.");
+        }
 
         var privateKey = _secretProtector.Unprotect(c.PrivateKeyEncrypted);
         if (!c.PublicKey.StartsWith("pub_", StringComparison.Ordinal))
@@ -129,13 +137,15 @@ public sealed class WompiConfigService : IWompiConfigService
             c.PublicKey,
             c.PrivateKeyEncrypted is null ? null : Mask(c.PrivateKeyEncrypted),
             c.EventsSecretEncrypted is null ? null : Mask(c.EventsSecretEncrypted),
+            c.IntegritySecretEncrypted is null ? null : Mask(c.IntegritySecretEncrypted),
             c.WebhookEndpoint,
             c.Currency,
             c.MaxRetries,
             c.Status,
             c.LastValidatedAt,
             c.PrivateKeyEncrypted is not null,
-            c.EventsSecretEncrypted is not null);
+            c.EventsSecretEncrypted is not null,
+            c.IntegritySecretEncrypted is not null);
 
     private string Mask(string encrypted)
     {

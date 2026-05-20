@@ -22,6 +22,9 @@ public class WompiMasterConfig : BaseEntity
     /// <summary>Secret de firma de eventos cifrado, usado para validar webhooks.</summary>
     public string? EventsSecretEncrypted { get; set; }
 
+    /// <summary>Secret de integridad cifrado, usado para firmar transacciones de cobro (checkout).</summary>
+    public string? IntegritySecretEncrypted { get; set; }
+
     public string? WebhookEndpoint { get; set; }
     public string Currency { get; set; } = "COP";
 
