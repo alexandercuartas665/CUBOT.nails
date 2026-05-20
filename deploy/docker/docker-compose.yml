@@ -1,0 +1,107 @@
+name: cubot
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cubot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - cubot-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - cubot-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: cubot-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    ports:
+      - "${REDIS_PORT:-6381}:6379"
+    volumes:
+      - cubot-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - cubot-net
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: cubot-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "${RABBITMQ_PORT:-5673}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15673}:15672"
+    volumes:
+      - cubot-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - cubot-net
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: cubot-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "${PGADMIN_PORT:-5051}:80"
+    volumes:
+      - cubot-pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cubot-net
+
+  # evolution-api:
+  #   image: atendai/evolution-api:latest
+  #   container_name: cubot-evolution-api
+  #   restart: unless-stopped
+  #   environment:
+  #     SERVER_URL: http://localhost:8080
+  #     AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+  #   ports:
+  #     - "${EVOLUTION_PORT:-8080}:8080"
+  #   volumes:
+  #     - cubot-evolution-data:/evolution/instances
+  #   networks:
+  #     - cubot-net
+
+volumes:
+  cubot-postgres-data:
+  cubot-redis-data:
+  cubot-rabbitmq-data:
+  cubot-pgadmin-data:
+
+networks:
+  cubot-net:
+    name: cubot-net
+    driver: bridge

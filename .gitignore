@@ -30,3 +30,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# CUBOT.travels - secretos y datos locales
+.env
+.env.local
+appsettings.*.local.json
+deploy/docker/.env
+deploy/docker/postgres-data/
+deploy/docker/rabbitmq-data/
+deploy/docker/redis-data/
+deploy/docker/pgadmin-data/
+*.user

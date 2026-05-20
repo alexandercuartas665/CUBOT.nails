@@ -1,0 +1,18 @@
+# Placeholder
+#
+# Esta carpeta albergara la solucion .NET de CUBOT.travels segun la hoja de ruta:
+# https://github.com/alexandercuartas665/cubotcrm + vault Obsidian seccion 4
+#
+# Estructura objetivo:
+#   apps/backend/CubotTravels.sln
+#   apps/backend/src/CubotTravels.Domain
+#   apps/backend/src/CubotTravels.Application
+#   apps/backend/src/CubotTravels.Infrastructure
+#   apps/backend/src/CubotTravels.Shared
+#   apps/backend/src/CubotTravels.Api
+#   apps/backend/src/CubotTravels.Web        (Blazor)
+#   apps/backend/src/CubotTravels.SuperAdmin (Blazor)
+#   apps/backend/src/CubotTravels.Workers
+#   apps/backend/tests/CubotTravels.Domain.Tests
+#   apps/backend/tests/CubotTravels.Application.Tests
+#   apps/backend/tests/CubotTravels.Integration.Tests
