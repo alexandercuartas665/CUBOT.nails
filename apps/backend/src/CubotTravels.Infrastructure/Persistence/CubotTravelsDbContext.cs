@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CubotTravels.Infrastructure.Persistence;
 
-public class CubotTravelsDbContext : DbContext
+public class CubotTravelsDbContext : DbContext, IApplicationDbContext
 {
     private readonly ITenantContext _tenantContext;
 
