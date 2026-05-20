@@ -65,8 +65,8 @@ else
 
 @if (_modalOpen)
 {
-    <div class="modal-overlay" @onclick="Close">
-        <div class="modal-dialog" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-dialog">
             <div class="modal-head">
                 <h3>@(_editingId is null ? "Nuevo plan" : "Editar plan")</h3>
                 <button class="modal-close" @onclick="Close">&times;</button>
@@ -162,6 +162,8 @@ else
         _modalOpen = true;
     }
 
+    // El modal solo se cierra con la "X" o "Cancelar" (no al hacer clic fuera/dentro),
+    // para evitar cierres accidentales mientras se edita.
     private void Close() => _modalOpen = false;
 
     private async Task SaveAsync()
