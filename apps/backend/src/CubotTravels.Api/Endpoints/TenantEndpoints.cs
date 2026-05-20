@@ -53,6 +53,32 @@ public static class TenantEndpoints
                 ? Results.BadRequest(new { error = "No hay tenant activo o falta el token en el alta." })
                 : Results.Ok(config);
         });
+
+        // --- Lineas WhatsApp del tenant (modulo 1.4) ---
+        var lines = app.MapGroup("/tenant/whatsapp-lines").RequireAuthorization("TenantAdmin");
+
+        lines.MapGet("", async (IWhatsAppLineService svc, CancellationToken ct) =>
+            Results.Ok(await svc.ListAsync(ct)));
+
+        lines.MapPost("", async (CreateWhatsAppLineRequest request, ClaimsPrincipal user, IWhatsAppLineService svc, CancellationToken ct) =>
+        {
+            var line = await svc.CreateAsync(request, ActorId(user), ct);
+            return line is null
+                ? Results.BadRequest(new { error = "No hay tenant activo." })
+                : Results.Created($"/tenant/whatsapp-lines/{line.Id}", line);
+        });
+
+        lines.MapPost("/{id:guid}/status", async (Guid id, ChangeLineStatusRequest request, ClaimsPrincipal user, IWhatsAppLineService svc, CancellationToken ct) =>
+        {
+            var line = await svc.ChangeStatusAsync(id, request.Status, ActorId(user), ct);
+            return line is null ? Results.NotFound() : Results.Ok(line);
+        });
+
+        lines.MapPost("/{id:guid}/assignment", async (Guid id, AssignLineRequest request, ClaimsPrincipal user, IWhatsAppLineService svc, CancellationToken ct) =>
+        {
+            var line = await svc.AssignAsync(id, request.TenantUserId, ActorId(user), ct);
+            return line is null ? Results.NotFound() : Results.Ok(line);
+        });
     }
 
     private static Guid ActorId(ClaimsPrincipal user) =>

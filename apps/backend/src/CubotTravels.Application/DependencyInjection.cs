@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<Tenancy.ITenantUserService, Tenancy.TenantUserService>();
         services.AddScoped<Tenancy.IEvolutionConfigService, Tenancy.EvolutionConfigService>();
+        services.AddScoped<Tenancy.IWhatsAppLineService, Tenancy.WhatsAppLineService>();
         return services;
     }
 }

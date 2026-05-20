@@ -30,6 +30,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
     public DbSet<TenantConfiguration> TenantConfigurations => Set<TenantConfiguration>();
     public DbSet<TenantEvolutionConfig> TenantEvolutionConfigs => Set<TenantEvolutionConfig>();
+    public DbSet<WhatsAppLine> WhatsAppLines => Set<WhatsAppLine>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -44,6 +45,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
         configurationBuilder.Properties<AuditActorType>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<TenantRole>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<PlatformUserStatus>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<WhatsAppLineStatus>().HaveConversion<string>().HaveMaxLength(40);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -144,6 +146,14 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext
             b.Property(x => x.WebhookUrl).HasMaxLength(500);
             // Una configuracion Evolution por tenant.
             b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        modelBuilder.Entity<WhatsAppLine>(b =>
+        {
+            b.Property(x => x.InstanceName).HasMaxLength(200).IsRequired();
+            b.Property(x => x.PhoneNumber).HasMaxLength(40);
+            b.HasIndex(x => new { x.TenantId, x.InstanceName }).IsUnique();
+            b.HasIndex(x => x.AssignedToTenantUserId);
         });
     }
 
