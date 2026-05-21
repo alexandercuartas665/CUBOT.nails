@@ -191,9 +191,9 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
 
         modelBuilder.Entity<TenantEvolutionConfig>(b =>
         {
-            b.Property(x => x.BaseUrl).HasMaxLength(500).IsRequired();
-            b.Property(x => x.InstanceName).HasMaxLength(200).IsRequired();
-            b.Property(x => x.ApiTokenEncrypted).IsRequired();
+            // Campos del servidor propio: opcionales (cuando la agencia usa el servidor maestro quedan nulos).
+            b.Property(x => x.BaseUrl).HasMaxLength(500);
+            b.Property(x => x.InstanceName).HasMaxLength(200);
             b.Property(x => x.WebhookUrl).HasMaxLength(500);
             // Una configuracion Evolution por tenant.
             b.HasIndex(x => x.TenantId).IsUnique();

@@ -1,13 +1,16 @@
+using System.Net.Http.Json;
+using System.Text.Json;
 using CubotTravels.Application.Admin;
 
 namespace CubotTravels.Infrastructure.Evolution;
 
 /// <summary>
-/// Cliente HTTP del servidor Evolution API. Por ahora solo comprueba conexion + API key
-/// (GET /instance/fetchInstances). Se ampliara con crear instancia, QR y envio de mensajes.
+/// Cliente HTTP del servidor Evolution API (v2): comprobar conexion, crear/conectar instancia,
+/// estado, eliminar y enviar mensajes. La API key (global o del servidor propio) va en el header "apikey".
 /// </summary>
 public sealed class EvolutionApiClient : IEvolutionApiClient
 {
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
     private readonly HttpClient _http;
 
     public EvolutionApiClient(HttpClient http)
@@ -17,29 +20,153 @@ public sealed class EvolutionApiClient : IEvolutionApiClient
 
     public async Task<EvolutionPingResult> CheckAsync(string baseUrl, string apiKey, CancellationToken cancellationToken = default)
     {
-        var url = $"{baseUrl.TrimEnd('/')}/instance/fetchInstances";
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.TryAddWithoutValidation("apikey", apiKey);
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(10));
-
-            using var response = await _http.SendAsync(request, cts.Token);
-            var code = (int)response.StatusCode;
-            if (response.IsSuccessStatusCode)
-            {
-                return new EvolutionPingResult(Reachable: true, Authenticated: true, code, "OK");
-            }
-            if (code is 401 or 403)
-            {
-                return new EvolutionPingResult(Reachable: true, Authenticated: false, code, "Unauthorized");
-            }
-            return new EvolutionPingResult(Reachable: true, Authenticated: false, code, $"HTTP {code}");
+            using var resp = await SendAsync(HttpMethod.Get, baseUrl, "/instance/fetchInstances", apiKey, content: null, cancellationToken);
+            var code = (int)resp.StatusCode;
+            if (resp.IsSuccessStatusCode) { return new EvolutionPingResult(true, true, code, "OK"); }
+            return new EvolutionPingResult(true, false, code, code is 401 or 403 ? "Unauthorized" : $"HTTP {code}");
         }
         catch (Exception ex)
         {
-            return new EvolutionPingResult(Reachable: false, Authenticated: false, null, ex.GetType().Name);
+            return new EvolutionPingResult(false, false, null, ex.GetType().Name);
         }
     }
+
+    public async Task<EvolutionInstanceResult> CreateInstanceAsync(string baseUrl, string apiKey, string instanceName, CancellationToken cancellationToken = default)
+    {
+        var body = new { instanceName, qrcode = true, integration = "WHATSAPP-BAILEYS" };
+        try
+        {
+            using var resp = await SendAsync(HttpMethod.Post, baseUrl, "/instance/create", apiKey, JsonContent.Create(body), cancellationToken);
+            var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+            if (!resp.IsSuccessStatusCode)
+            {
+                // Si ya existe, intentar conectar para traer el QR.
+                if ((int)resp.StatusCode is 403 or 409 || json.Contains("already in use", StringComparison.OrdinalIgnoreCase))
+                {
+                    return await ConnectAsync(baseUrl, apiKey, instanceName, cancellationToken);
+                }
+                return new EvolutionInstanceResult(false, null, null, null, $"HTTP {(int)resp.StatusCode}: {Trim(json)}");
+            }
+            using var doc = JsonDocument.Parse(json);
+            return new EvolutionInstanceResult(true, ExtractQr(doc.RootElement), ExtractState(doc.RootElement), null, null);
+        }
+        catch (Exception ex)
+        {
+            return new EvolutionInstanceResult(false, null, null, null, ex.Message);
+        }
+    }
+
+    public async Task<EvolutionInstanceResult> ConnectAsync(string baseUrl, string apiKey, string instanceName, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var resp = await SendAsync(HttpMethod.Get, baseUrl, $"/instance/connect/{Uri.EscapeDataString(instanceName)}", apiKey, content: null, cancellationToken);
+            var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+            if (!resp.IsSuccessStatusCode)
+            {
+                return new EvolutionInstanceResult(false, null, null, null, $"HTTP {(int)resp.StatusCode}: {Trim(json)}");
+            }
+            using var doc = JsonDocument.Parse(json);
+            return new EvolutionInstanceResult(true, ExtractQr(doc.RootElement), ExtractState(doc.RootElement), null, null);
+        }
+        catch (Exception ex)
+        {
+            return new EvolutionInstanceResult(false, null, null, null, ex.Message);
+        }
+    }
+
+    public async Task<EvolutionInstanceResult> GetStateAsync(string baseUrl, string apiKey, string instanceName, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var resp = await SendAsync(HttpMethod.Get, baseUrl, $"/instance/connectionState/{Uri.EscapeDataString(instanceName)}", apiKey, content: null, cancellationToken);
+            var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+            if (!resp.IsSuccessStatusCode)
+            {
+                return new EvolutionInstanceResult(false, null, null, null, $"HTTP {(int)resp.StatusCode}");
+            }
+            using var doc = JsonDocument.Parse(json);
+            return new EvolutionInstanceResult(true, null, ExtractState(doc.RootElement), null, null);
+        }
+        catch (Exception ex)
+        {
+            return new EvolutionInstanceResult(false, null, null, null, ex.Message);
+        }
+    }
+
+    public async Task<bool> DeleteInstanceAsync(string baseUrl, string apiKey, string instanceName, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Cerrar sesion primero (ignora errores), luego eliminar.
+            try { (await SendAsync(HttpMethod.Delete, baseUrl, $"/instance/logout/{Uri.EscapeDataString(instanceName)}", apiKey, null, cancellationToken)).Dispose(); }
+            catch { /* puede no estar conectada */ }
+            using var resp = await SendAsync(HttpMethod.Delete, baseUrl, $"/instance/delete/{Uri.EscapeDataString(instanceName)}", apiKey, null, cancellationToken);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<EvolutionSendResult> SendTextAsync(string baseUrl, string apiKey, string instanceName, string phone, string text, CancellationToken cancellationToken = default)
+    {
+        var body = new { number = phone, text };
+        try
+        {
+            using var resp = await SendAsync(HttpMethod.Post, baseUrl, $"/message/sendText/{Uri.EscapeDataString(instanceName)}", apiKey, JsonContent.Create(body), cancellationToken);
+            if (resp.IsSuccessStatusCode) { return new EvolutionSendResult(true, null); }
+            var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+            return new EvolutionSendResult(false, $"HTTP {(int)resp.StatusCode}: {Trim(json)}");
+        }
+        catch (Exception ex)
+        {
+            return new EvolutionSendResult(false, ex.Message);
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string baseUrl, string path, string apiKey, HttpContent? content, CancellationToken ct)
+    {
+        var url = $"{baseUrl.TrimEnd('/')}{path}";
+        using var request = new HttpRequestMessage(method, url) { Content = content };
+        request.Headers.TryAddWithoutValidation("apikey", apiKey);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(Timeout);
+        return await _http.SendAsync(request, cts.Token);
+    }
+
+    // El QR puede venir como qrcode.base64 / qrcode.code / base64 segun el endpoint.
+    private static string? ExtractQr(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            if (root.TryGetProperty("qrcode", out var qr) && qr.ValueKind == JsonValueKind.Object)
+            {
+                if (qr.TryGetProperty("base64", out var b) && b.ValueKind == JsonValueKind.String) { return b.GetString(); }
+                if (qr.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String) { return c.GetString(); }
+            }
+            if (root.TryGetProperty("base64", out var b2) && b2.ValueKind == JsonValueKind.String) { return b2.GetString(); }
+        }
+        return null;
+    }
+
+    // El estado puede venir como instance.state / state.
+    private static string? ExtractState(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            if (root.TryGetProperty("instance", out var inst) && inst.ValueKind == JsonValueKind.Object
+                && inst.TryGetProperty("state", out var s1) && s1.ValueKind == JsonValueKind.String)
+            {
+                return s1.GetString();
+            }
+            if (root.TryGetProperty("state", out var s2) && s2.ValueKind == JsonValueKind.String) { return s2.GetString(); }
+        }
+        return null;
+    }
+
+    private static string Trim(string s) => s.Length > 200 ? s[..200] : s;
 }

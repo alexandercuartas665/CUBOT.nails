@@ -8,9 +8,15 @@ namespace CubotTravels.Domain.Entities;
 /// </summary>
 public class TenantEvolutionConfig : TenantEntity
 {
-    public string BaseUrl { get; set; } = null!;
-    public string InstanceName { get; set; } = null!;
-    public string ApiTokenEncrypted { get; set; } = null!;
+    /// <summary>Si true, la agencia usa el servidor Evolution maestro de la plataforma; si false, el suyo propio.</summary>
+    public bool UseMasterServer { get; set; } = true;
+
+    /// <summary>URL del servidor propio (solo cuando UseMasterServer = false).</summary>
+    public string? BaseUrl { get; set; }
+    public string? InstanceName { get; set; }
+
+    /// <summary>API key del servidor propio cifrada (solo cuando UseMasterServer = false).</summary>
+    public string? ApiTokenEncrypted { get; set; }
     public string? WebhookUrl { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTimeOffset? LastValidatedAt { get; set; }

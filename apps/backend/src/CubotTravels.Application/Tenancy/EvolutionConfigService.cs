@@ -63,6 +63,7 @@ public sealed class EvolutionConfigService : IEvolutionConfigService
         config.InstanceName = request.InstanceName.Trim();
         config.WebhookUrl = request.WebhookUrl?.Trim();
         config.IsActive = true;
+        config.UseMasterServer = false; // configurar URL/token propios implica servidor propio
 
         // Auditoria SIN el token (nunca se loggea el secreto).
         _audit.Write(actorUserId, isNew ? "evolution.config.create" : "evolution.config.update",
@@ -76,7 +77,7 @@ public sealed class EvolutionConfigService : IEvolutionConfigService
     }
 
     private EvolutionConfigDto Map(TenantEvolutionConfig c) =>
-        new(c.BaseUrl, c.InstanceName, Mask(c.ApiTokenEncrypted), c.WebhookUrl, c.IsActive, c.LastValidatedAt);
+        new(c.BaseUrl ?? "", c.InstanceName ?? "", c.ApiTokenEncrypted is null ? "" : Mask(c.ApiTokenEncrypted), c.WebhookUrl, c.IsActive, c.LastValidatedAt);
 
     private string Mask(string encryptedToken)
     {
