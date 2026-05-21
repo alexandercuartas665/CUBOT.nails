@@ -90,6 +90,10 @@ else
                 <p class="text-muted" style="margin-top:8px;">Esta agencia no tiene un plan activo.</p>
                 <button class="btn btn-primary" style="margin-top:10px;" @onclick="OpenChange">Elegir un plan</button>
             }
+            @if (_changeInfo is not null)
+            {
+                <div class="@(_changeInfoOk ? "text-success" : "text-danger")" style="font-size:12.5px;margin-top:14px;line-height:1.4;">@_changeInfo</div>
+            }
         </div>
 
         <div class="card" style="padding:22px 24px;">
@@ -345,7 +349,7 @@ else
                             <option value="@BillingFrequency.Yearly">Anual</option>
                         </select>
                     </div>
-                    <p class="text-muted" style="font-size:12px;">El cambio aplica de inmediato y se recalcula la fecha de corte. El cobro/prorrateo se procesara por Wompi (pendiente).</p>
+                    <p class="text-muted" style="font-size:12px;">El cambio aplica de inmediato. Si subes a un plan mayor se cobra el plan nuevo completo ya y la fecha de corte se reinicia a hoy. Si bajas a un plan menor no se cobra nada ahora y conservas tu fecha de corte actual; el nuevo valor aplica en la proxima renovacion.</p>
                 }
                 @if (_changeError is not null)
                 {
@@ -384,6 +388,8 @@ else
     private bool _changeOpen;
     private bool _changeBusy;
     private string? _changeError;
+    private string? _changeInfo;
+    private bool _changeInfoOk;
     private Guid _changePlanId;
     private BillingFrequency _changeFreq = BillingFrequency.Monthly;
 
@@ -459,6 +465,8 @@ else
                 _changeError = "No se pudo cambiar el plan.";
                 return;
             }
+            _changeInfo = result.Message;
+            _changeInfoOk = !result.RequiresPayment;
             _changeOpen = false;
             await ReloadAsync();
         }
