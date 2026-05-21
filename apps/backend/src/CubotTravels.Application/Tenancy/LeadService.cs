@@ -86,6 +86,17 @@ public sealed class LeadService : ILeadService
             return null;
         }
 
+        // El lead queda asignado al asesor que lo crea, para que un asesor con visibilidad
+        // "solo sus clientes" lo siga viendo despues de crearlo.
+        Guid? assignedTo = null;
+        if (_tenantContext.UserId is Guid creatorUserId)
+        {
+            assignedTo = await _db.TenantUsers
+                .Where(tu => tu.PlatformUserId == creatorUserId)
+                .Select(tu => (Guid?)tu.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
         var now = _timeProvider.GetUtcNow();
         var lead = new Lead
         {
@@ -97,7 +108,8 @@ public sealed class LeadService : ILeadService
             Currency = request.Currency?.Trim(),
             StageId = stage.Id,
             Status = LeadStatus.Open,
-            StageChangedAt = now
+            StageChangedAt = now,
+            AssignedToTenantUserId = assignedTo
         };
         _db.Leads.Add(lead);
         AddActivity(tenantId, lead.Id, "lead.created", $"Lead creado en etapa {stage.Name}");
