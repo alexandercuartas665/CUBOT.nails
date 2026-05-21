@@ -26,6 +26,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
     public DbSet<TenantPayment> TenantPayments => Set<TenantPayment>();
     public DbSet<WompiMasterConfig> WompiMasterConfigs => Set<WompiMasterConfig>();
     public DbSet<WompiWebhookEvent> WompiWebhookEvents => Set<WompiWebhookEvent>();
+    public DbSet<EvolutionMasterConfig> EvolutionMasterConfigs => Set<EvolutionMasterConfig>();
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
     public DbSet<SuperAdminAuditLog> SuperAdminAuditLogs => Set<SuperAdminAuditLog>();
 
@@ -66,6 +67,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
         configurationBuilder.Properties<MessageDirection>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<WompiEnvironment>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<WompiIntegrationStatus>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<EvolutionIntegrationStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<WebhookProcessingStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<PipelineFieldType>().HaveConversion<string>().HaveMaxLength(40);
     }
@@ -153,6 +155,11 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
             b.Property(x => x.PublicKey).HasMaxLength(200);
             b.Property(x => x.WebhookEndpoint).HasMaxLength(500);
             b.Property(x => x.Currency).HasMaxLength(10).IsRequired();
+        });
+
+        modelBuilder.Entity<EvolutionMasterConfig>(b =>
+        {
+            b.Property(x => x.BaseUrl).HasMaxLength(500);
         });
 
         modelBuilder.Entity<WompiWebhookEvent>(b =>

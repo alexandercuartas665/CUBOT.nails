@@ -28,6 +28,7 @@ public interface IApplicationDbContext
     DbSet<TenantPayment> TenantPayments { get; }
     DbSet<WompiMasterConfig> WompiMasterConfigs { get; }
     DbSet<WompiWebhookEvent> WompiWebhookEvents { get; }
+    DbSet<EvolutionMasterConfig> EvolutionMasterConfigs { get; }
     DbSet<SuperAdminAuditLog> SuperAdminAuditLogs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

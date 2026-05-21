@@ -48,6 +48,7 @@ public static class DependencyInjection
             .PersistKeysToDbContext<CubotTravelsDbContext>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         services.AddHttpClient<CubotTravels.Application.Admin.IWompiApiClient, Wompi.WompiApiClient>();
+        services.AddHttpClient<CubotTravels.Application.Admin.IEvolutionApiClient, Evolution.EvolutionApiClient>();
         services.AddScoped<DatabaseSeeder>();
 
         // Comprobantes PDF (QuestPDF). Licencia Community: gratis para empresas con ingresos < USD 1M/ano.
