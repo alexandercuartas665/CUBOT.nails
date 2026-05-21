@@ -1,11 +1,834 @@
 @page "/pipeline"
 @attribute [Authorize]
+@rendermode InteractiveServer
+@using CubotTravels.Application.Tenancy
+@inject IPipelineService PipelineSvc
+@inject ILeadService LeadsSvc
+@inject ITenantUserService UsersSvc
 
 <PageTitle>Pipeline - CUBOT.travels</PageTitle>
 
-<ModulePlaceholder Eyebrow="Operacion Comercial" Title="Pipeline comercial"
-                   Description="Embudo Kanban con etapas configurables por agencia para mover leads hasta el cierre.">
-    <Icon>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/></svg>
-    </Icon>
-</ModulePlaceholder>
+<div class="module-head">
+    <div>
+        <div class="module-eyebrow">
+            <div class="module-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/></svg>
+            </div>
+            <span>Operacion Comercial</span>
+        </div>
+        <h1 class="page-title" style="margin-top:12px;">Pipeline <span>comercial</span></h1>
+        <p class="page-sub" style="margin-bottom:0;">Embudo Kanban con etapas configurables por agencia para mover leads hasta el cierre.</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <button class="btn btn-outline-secondary" @onclick="OpenConfig">Configurar embudo</button>
+        <button class="btn btn-primary" @onclick="() => OpenNewLead(null)" disabled="@(_stages.Count == 0)">+ Nuevo lead</button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_stages.Count == 0)
+{
+    <p class="text-muted">No hay etapas configuradas todavia.</p>
+}
+else
+{
+    <div class="kpi-grid" style="margin-bottom:22px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));max-width:840px;">
+        <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon tone-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div></div>
+            <div class="kpi-label">Total leads</div>
+            <div class="kpi-value">@_leads.Count</div>
+            <div class="kpi-hint">@CountOpen() abiertos en el embudo</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon tone-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg></div></div>
+            <div class="kpi-label">Tasa de conversion</div>
+            <div class="kpi-value">@_conversion%</div>
+            <div class="kpi-hint">@CountWon() ganados de @_leads.Count</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon tone-gold"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div></div>
+            <div class="kpi-label">Valor del pipeline</div>
+            <div class="kpi-value">@PipelineValue()</div>
+            <div class="kpi-hint">Suma de leads abiertos</div>
+        </div>
+    </div>
+
+    <div class="kanban">
+        @foreach (var stage in _stages)
+        {
+            var leadsInStage = _leads.Where(l => l.StageId == stage.Id).ToList();
+            <div class="kb-col @(_dragOverStageId == stage.Id ? "drop-hover" : "")"
+                 @ondragover:preventDefault="true"
+                 @ondragenter="() => _dragOverStageId = stage.Id"
+                 @ondragleave="() => _dragOverStageId = null"
+                 @ondrop="() => OnDropAsync(stage.Id)">
+                <div class="kb-col-head">
+                    <div>
+                        <div class="kb-col-title">@stage.Name</div>
+                        <div class="kb-col-meta">@StageTag(stage)</div>
+                    </div>
+                    <span class="kb-col-count">@leadsInStage.Count</span>
+                </div>
+                <div class="kb-body">
+                    @if (leadsInStage.Count == 0)
+                    {
+                        <div class="kb-empty">Sin leads en esta etapa</div>
+                    }
+                    else
+                    {
+                        @foreach (var lead in leadsInStage)
+                        {
+                            <div class="kb-card" draggable="true"
+                                 @ondragstart="() => _draggedLeadId = lead.Id"
+                                 @ondragend="() => _draggedLeadId = null"
+                                 @onclick="() => OpenLeadAsync(lead.Id)">
+                                <div class="kb-cardrow">
+                                    <span class="nm">@lead.ContactName</span>
+                                    @if (lead.AssignedToTenantUserId is Guid aid)
+                                    {
+                                        <span class="ase" title="@UserEmail(aid)">@UserInitials(aid)</span>
+                                    }
+                                </div>
+                                <div class="meta">
+                                    @(string.IsNullOrWhiteSpace(lead.Destination) ? "Sin destino" : lead.Destination)
+                                    @if (!string.IsNullOrWhiteSpace(lead.ContactPhone))
+                                    {
+                                        <text> &middot; @lead.ContactPhone</text>
+                                    }
+                                </div>
+                                @if (lead.EstimatedValue is decimal v)
+                                {
+                                    <div class="val">@Money(v, lead.Currency)</div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+                <button class="add-card-btn" style="margin:8px;padding:8px;border:1px dashed var(--border);border-radius:8px;background:none;color:var(--muted-foreground);font-size:12px;font-weight:600;cursor:pointer;width:calc(100% - 16px);"
+                        @onclick="() => OpenNewLead(stage.Id)">
+                    + Agregar lead
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@* ===== Modal: nuevo lead ===== *@
+@if (_newLeadOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog">
+            <div class="modal-head">
+                <h3>Nuevo lead</h3>
+                <button class="modal-close" @onclick="() => _newLeadOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="field">
+                    <label class="form-label">Nombre del contacto *</label>
+                    <input class="form-control" @bind="_nl.ContactName" autocomplete="off" />
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="form-label">Telefono</label>
+                        <input class="form-control" @bind="_nl.ContactPhone" autocomplete="off" />
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Destino</label>
+                        <input class="form-control" @bind="_nl.Destination" autocomplete="off" />
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="form-label">Valor estimado</label>
+                        <input class="form-control" type="number" @bind="_nl.EstimatedValue" />
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Moneda</label>
+                        <input class="form-control" @bind="_nl.Currency" placeholder="COP" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="form-label">Etapa inicial</label>
+                    <select class="form-control" @bind="_nl.StageId">
+                        @foreach (var s in _stages)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+                @if (_newLeadError is not null)
+                {
+                    <div class="text-danger small">@_newLeadError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="() => _newLeadOpen = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveNewLeadAsync" disabled="@_busy">Crear lead</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: detalle del lead ===== *@
+@if (_leadOpen && _editLead is not null)
+{
+    var curIdx = _stages.FindIndex(s => s.Id == _editStageId);
+    <div class="modal-overlay">
+        <div class="modal-dialog" style="max-width:680px;">
+            <div class="modal-head">
+                <div>
+                    <h3>@(_el.ContactName)</h3>
+                    <div class="text-muted" style="font-size:12px;margin-top:2px;">@StageName(_editStageId) &middot; @StatusText(_editLead.Status)</div>
+                </div>
+                <button class="modal-close" @onclick="CloseLead">&times;</button>
+            </div>
+            <div class="modal-body">
+                @* Stepper de etapas *@
+                <div style="display:grid;grid-template-columns:repeat(@_stages.Count,1fr);gap:4px;margin-bottom:18px;">
+                    @for (var i = 0; i < _stages.Count; i++)
+                    {
+                        var s = _stages[i];
+                        var done = i < curIdx;
+                        var current = i == curIdx;
+                        <button @onclick="() => MoveToStageAsync(s.Id)" title="Mover a @s.Name"
+                                style="background:none;border:none;cursor:pointer;text-align:center;padding:2px;">
+                            <div style="height:4px;border-radius:999px;margin-bottom:5px;background:@((done || current) ? "var(--primary)" : "var(--border)");"></div>
+                            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;color:@(current ? "var(--primary)" : "var(--muted-foreground)");">@s.Name</div>
+                        </button>
+                    }
+                </div>
+
+                @* Datos de contacto (core) *@
+                <div class="pl-stagegroup">
+                    <div class="pl-stagegroup-title">Datos de contacto</div>
+                    <div class="pl-fields">
+                        <div class="pl-field col2">
+                            <label class="form-label">Nombre *</label>
+                            <input class="form-control" @bind="_el.ContactName" />
+                        </div>
+                        <div class="pl-field">
+                            <label class="form-label">Telefono</label>
+                            <input class="form-control" @bind="_el.ContactPhone" />
+                        </div>
+                        <div class="pl-field">
+                            <label class="form-label">Destino</label>
+                            <input class="form-control" @bind="_el.Destination" />
+                        </div>
+                        <div class="pl-field">
+                            <label class="form-label">Valor estimado</label>
+                            <input class="form-control" type="number" @bind="_el.EstimatedValue" />
+                        </div>
+                        <div class="pl-field">
+                            <label class="form-label">Moneda</label>
+                            <input class="form-control" @bind="_el.Currency" />
+                        </div>
+                    </div>
+                </div>
+
+                @* Campos configurables por etapa (hasta la etapa actual) *@
+                @for (var i = 0; i <= curIdx && i < _stages.Count; i++)
+                {
+                    var s = _stages[i];
+                    var stageFields = _fields.Where(f => f.StageId == s.Id).OrderBy(f => f.SortOrder).ToList();
+                    if (stageFields.Count == 0) { continue; }
+                    <div class="pl-stagegroup">
+                        <div class="pl-stagegroup-title">@s.Name</div>
+                        <div class="pl-fields">
+                            @foreach (var f in stageFields)
+                            {
+                                <div class="pl-field @(f.Column == 2 ? "col2" : "")">
+                                    <label class="form-label">@f.Label</label>
+                                    @switch (f.FieldType)
+                                    {
+                                        case PipelineFieldType.TextArea:
+                                            <textarea class="form-control" rows="2" @bind="_editValues[f.FieldKey]"></textarea>
+                                            break;
+                                        case PipelineFieldType.Number:
+                                        case PipelineFieldType.Currency:
+                                            <input class="form-control" type="number" @bind="_editValues[f.FieldKey]" />
+                                            break;
+                                        case PipelineFieldType.Select:
+                                            <select class="form-control" @bind="_editValues[f.FieldKey]">
+                                                <option value="">—</option>
+                                                @foreach (var opt in SelectOptions(f))
+                                                {
+                                                    <option value="@opt">@opt</option>
+                                                }
+                                            </select>
+                                            break;
+                                        default:
+                                            <input class="form-control" @bind="_editValues[f.FieldKey]" />
+                                            break;
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @* Historial de actividad *@
+                @if (_activities.Count > 0)
+                {
+                    <div class="pl-stagegroup">
+                        <div class="pl-stagegroup-title">Actividad</div>
+                        @foreach (var a in _activities)
+                        {
+                            <div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border);">
+                                <span class="text-muted">@a.CreatedAt.LocalDateTime.ToString("dd MMM HH:mm")</span>
+                                &middot; @a.Description
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (_leadError is not null)
+                {
+                    <div class="text-danger small">@_leadError</div>
+                }
+            </div>
+            <div class="modal-foot" style="justify-content:space-between;">
+                <div style="display:flex;gap:6px;">
+                    @if (curIdx > 0)
+                    {
+                        <button class="btn btn-outline-secondary" @onclick="() => MoveToStageAsync(_stages[curIdx - 1].Id)" disabled="@_busy">&larr; @_stages[curIdx - 1].Name</button>
+                    }
+                    @if (curIdx >= 0 && curIdx < _stages.Count - 1)
+                    {
+                        <button class="btn btn-outline-secondary" @onclick="() => MoveToStageAsync(_stages[curIdx + 1].Id)" disabled="@_busy">@_stages[curIdx + 1].Name &rarr;</button>
+                    }
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-outline-secondary" @onclick="CloseLead">Cerrar</button>
+                    <button class="btn btn-primary" @onclick="SaveLeadAsync" disabled="@_busy">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: configurar embudo ===== *@
+@if (_configOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog" style="max-width:640px;">
+            <div class="modal-head">
+                <h3>Configurar embudo</h3>
+                <button class="modal-close" @onclick="() => _configOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="pl-stagegroup-title">Etapas</div>
+                @for (var i = 0; i < _stages.Count; i++)
+                {
+                    var s = _stages[i];
+                    var idx = i;
+                    <div class="cfg-row">
+                        <div style="display:flex;flex-direction:column;gap:2px;">
+                            <button class="btn btn-outline-secondary" style="padding:0 6px;line-height:1.4;" disabled="@(idx == 0 || _busy)" @onclick="() => MoveStageAsync(idx, idx - 1)">&uarr;</button>
+                            <button class="btn btn-outline-secondary" style="padding:0 6px;line-height:1.4;" disabled="@(idx == _stages.Count - 1 || _busy)" @onclick="() => MoveStageAsync(idx, idx + 1)">&darr;</button>
+                        </div>
+                        <div class="grow">
+                            <input class="form-control" value="@s.Name" @onchange="@(e => RenameStageAsync(s, e.Value?.ToString()))" />
+                            <div style="display:flex;gap:14px;margin-top:6px;font-size:12px;">
+                                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                                    <input type="checkbox" checked="@s.IsClosedWon" @onchange="@(e => ToggleStageFlagAsync(s, won: (bool)e.Value!))" /> Cierre ganado
+                                </label>
+                                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                                    <input type="checkbox" checked="@s.IsClosedLost" @onchange="@(e => ToggleStageFlagAsync(s, lost: (bool)e.Value!))" /> Cierre perdido
+                                </label>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-danger" style="padding:2px 8px;" disabled="@_busy" @onclick="() => DeleteStageAsync(s)">Eliminar</button>
+                    </div>
+                }
+                <div style="display:flex;gap:8px;margin:10px 0 4px;">
+                    <input class="form-control" placeholder="Nueva etapa" @bind="_newStageName" />
+                    <button class="btn btn-primary" style="white-space:nowrap;" disabled="@_busy" @onclick="AddStageAsync">+ Etapa</button>
+                </div>
+                @if (_cfgStageMsg is not null)
+                {
+                    <div class="text-danger small">@_cfgStageMsg</div>
+                }
+
+                <hr style="margin:18px 0;border-color:var(--border);" />
+
+                <div class="pl-stagegroup-title">Campos por etapa</div>
+                <div class="field">
+                    <label class="form-label">Etapa</label>
+                    <select class="form-control" @bind="_cfgStageId">
+                        @foreach (var s in _stages)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+                @{
+                    var cfgFields = _fields.Where(f => f.StageId == _cfgStageId).OrderBy(f => f.SortOrder).ToList();
+                }
+                @foreach (var f in cfgFields)
+                {
+                    <div class="cfg-row">
+                        <div class="grow">
+                            <div style="font-weight:600;font-size:13px;">@f.Label</div>
+                            <div class="text-muted" style="font-size:11px;">@f.FieldType &middot; col @f.Column &middot; @f.FieldKey</div>
+                        </div>
+                        <button class="btn btn-outline-danger" style="padding:2px 8px;" disabled="@_busy" @onclick="() => DeleteFieldAsync(f.Id)">Eliminar</button>
+                    </div>
+                }
+                <div style="border:1px solid var(--border);border-radius:0.6rem;padding:12px;margin-top:8px;">
+                    <div style="font-weight:600;font-size:12px;margin-bottom:8px;">Nuevo campo</div>
+                    <div class="field-row">
+                        <div class="field">
+                            <label class="form-label">Etiqueta</label>
+                            <input class="form-control" @bind="_nf.Label" />
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-control" @bind="_nf.FieldType">
+                                <option value="@PipelineFieldType.Text">Texto</option>
+                                <option value="@PipelineFieldType.Number">Numero</option>
+                                <option value="@PipelineFieldType.Currency">Moneda</option>
+                                <option value="@PipelineFieldType.TextArea">Texto largo</option>
+                                <option value="@PipelineFieldType.Select">Lista</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="field-row">
+                        <div class="field">
+                            <label class="form-label">Columna</label>
+                            <select class="form-control" @bind="_nf.Column">
+                                <option value="1">1 (media)</option>
+                                <option value="2">2 (completa)</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Opciones (una por linea)</label>
+                            <input class="form-control" @bind="_nf.Options" placeholder="solo para tipo Lista" />
+                        </div>
+                    </div>
+                    @if (_cfgFieldMsg is not null)
+                    {
+                        <div class="text-danger small">@_cfgFieldMsg</div>
+                    }
+                    <button class="btn btn-primary" style="margin-top:6px;" disabled="@_busy" @onclick="AddFieldAsync">+ Agregar campo</button>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="() => _configOpen = false">Listo</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _loading = true;
+    private bool _busy;
+    private List<PipelineStageDto> _stages = new();
+    private List<PipelineFieldDto> _fields = new();
+    private List<LeadDto> _leads = new();
+    private Dictionary<Guid, string> _userEmails = new();
+    private int _conversion;
+
+    private Guid? _draggedLeadId;
+    private Guid? _dragOverStageId;
+
+    // Nuevo lead
+    private bool _newLeadOpen;
+    private string? _newLeadError;
+    private NewLeadForm _nl = new();
+
+    // Detalle de lead
+    private bool _leadOpen;
+    private string? _leadError;
+    private LeadDto? _editLead;
+    private Guid _editStageId;
+    private EditLeadForm _el = new();
+    private Dictionary<string, string?> _editValues = new();
+    private List<LeadActivityDto> _activities = new();
+
+    // Configuracion
+    private bool _configOpen;
+    private string? _newStageName;
+    private string? _cfgStageMsg;
+    private Guid _cfgStageId;
+    private string? _cfgFieldMsg;
+    private NewFieldForm _nf = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var actor = await ActorAsync();
+        await PipelineSvc.EnsureDefaultsAsync(actor);
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _stages = (await PipelineSvc.ListStagesAsync()).ToList();
+        _fields = (await PipelineSvc.ListFieldsAsync()).ToList();
+        _leads = (await LeadsSvc.ListAsync()).ToList();
+        _userEmails = (await UsersSvc.ListAsync()).ToDictionary(u => u.Id, u => u.Email);
+        if (_cfgStageId == Guid.Empty && _stages.Count > 0)
+        {
+            _cfgStageId = _stages[0].Id;
+        }
+        RecalcKpis();
+    }
+
+    private void RecalcKpis()
+    {
+        var won = CountWon();
+        _conversion = _leads.Count == 0 ? 0 : (int)Math.Round(100.0 * won / _leads.Count);
+    }
+
+    // ===== Drag & drop =====
+    private async Task OnDropAsync(Guid stageId)
+    {
+        _dragOverStageId = null;
+        if (_draggedLeadId is not Guid leadId) { return; }
+        var lead = _leads.FirstOrDefault(l => l.Id == leadId);
+        _draggedLeadId = null;
+        if (lead is null || lead.StageId == stageId) { return; }
+
+        var actor = await ActorAsync();
+        var updated = await LeadsSvc.MoveAsync(leadId, new MoveLeadRequest(stageId), actor);
+        if (updated is not null)
+        {
+            ReplaceLead(updated);
+            RecalcKpis();
+        }
+    }
+
+    // ===== Nuevo lead =====
+    private void OpenNewLead(Guid? stageId)
+    {
+        _newLeadError = null;
+        _nl = new NewLeadForm { StageId = stageId ?? _stages.FirstOrDefault()?.Id ?? Guid.Empty, Currency = "COP" };
+        _newLeadOpen = true;
+    }
+
+    private async Task SaveNewLeadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nl.ContactName))
+        {
+            _newLeadError = "El nombre del contacto es obligatorio.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var req = new CreateLeadRequest(_nl.ContactName, _nl.ContactPhone, _nl.Destination,
+                _nl.EstimatedValue, _nl.Currency, _nl.StageId == Guid.Empty ? null : _nl.StageId);
+            var created = await LeadsSvc.CreateAsync(req, actor);
+            if (created is null)
+            {
+                _newLeadError = "No se pudo crear el lead.";
+                return;
+            }
+            _leads.Add(created);
+            RecalcKpis();
+            _newLeadOpen = false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // ===== Detalle de lead =====
+    private async Task OpenLeadAsync(Guid leadId)
+    {
+        _leadError = null;
+        var detail = await LeadsSvc.GetAsync(leadId);
+        if (detail is null) { return; }
+        _editLead = detail.Lead;
+        _editStageId = detail.Lead.StageId;
+        _activities = detail.Activities.OrderByDescending(a => a.CreatedAt).ToList();
+        _el = new EditLeadForm
+        {
+            ContactName = detail.Lead.ContactName,
+            ContactPhone = detail.Lead.ContactPhone,
+            Destination = detail.Lead.Destination,
+            EstimatedValue = detail.Lead.EstimatedValue,
+            Currency = detail.Lead.Currency
+        };
+        _editValues = new Dictionary<string, string?>();
+        foreach (var f in _fields)
+        {
+            _editValues[f.FieldKey] = detail.Lead.FieldValues.TryGetValue(f.FieldKey, out var v) ? v : null;
+        }
+        _leadOpen = true;
+    }
+
+    private void CloseLead()
+    {
+        _leadOpen = false;
+        _editLead = null;
+    }
+
+    private async Task SaveLeadAsync()
+    {
+        if (_editLead is null) { return; }
+        if (string.IsNullOrWhiteSpace(_el.ContactName))
+        {
+            _leadError = "El nombre del contacto es obligatorio.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var values = new Dictionary<string, string?>(_editValues);
+            var req = new UpdateLeadRequest(_el.ContactName, _el.ContactPhone, _el.Destination,
+                _el.EstimatedValue, _el.Currency, values);
+            var updated = await LeadsSvc.UpdateAsync(_editLead.Id, req, actor);
+            if (updated is not null)
+            {
+                ReplaceLead(updated);
+                _editLead = updated;
+            }
+            _leadOpen = false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task MoveToStageAsync(Guid stageId)
+    {
+        if (_editLead is null || _editStageId == stageId) { return; }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var updated = await LeadsSvc.MoveAsync(_editLead.Id, new MoveLeadRequest(stageId), actor);
+            if (updated is not null)
+            {
+                ReplaceLead(updated);
+                _editLead = updated;
+                _editStageId = updated.StageId;
+                RecalcKpis();
+                var detail = await LeadsSvc.GetAsync(updated.Id);
+                if (detail is not null)
+                {
+                    _activities = detail.Activities.OrderByDescending(a => a.CreatedAt).ToList();
+                }
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // ===== Configuracion: etapas =====
+    private void OpenConfig()
+    {
+        _cfgStageMsg = null;
+        _cfgFieldMsg = null;
+        _nf = new NewFieldForm();
+        if (_cfgStageId == Guid.Empty && _stages.Count > 0) { _cfgStageId = _stages[0].Id; }
+        _configOpen = true;
+    }
+
+    private async Task AddStageAsync()
+    {
+        _cfgStageMsg = null;
+        if (string.IsNullOrWhiteSpace(_newStageName))
+        {
+            _cfgStageMsg = "Escribe un nombre de etapa.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await PipelineSvc.CreateStageAsync(new CreatePipelineStageRequest(_newStageName!, 0), actor);
+            _newStageName = null;
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RenameStageAsync(PipelineStageDto stage, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Trim() == stage.Name) { return; }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await PipelineSvc.UpdateStageAsync(stage.Id, new UpdatePipelineStageRequest(name!.Trim(), stage.IsClosedWon, stage.IsClosedLost), actor);
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleStageFlagAsync(PipelineStageDto stage, bool? won = null, bool? lost = null)
+    {
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await PipelineSvc.UpdateStageAsync(stage.Id,
+                new UpdatePipelineStageRequest(stage.Name, won ?? stage.IsClosedWon, lost ?? stage.IsClosedLost), actor);
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task MoveStageAsync(int from, int to)
+    {
+        if (to < 0 || to >= _stages.Count) { return; }
+        var ordered = _stages.Select(s => s.Id).ToList();
+        var moved = ordered[from];
+        ordered.RemoveAt(from);
+        ordered.Insert(to, moved);
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await PipelineSvc.ReorderStagesAsync(new ReorderStagesRequest(ordered), actor);
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteStageAsync(PipelineStageDto stage)
+    {
+        _cfgStageMsg = null;
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var ok = await PipelineSvc.DeleteStageAsync(stage.Id, actor);
+            if (!ok)
+            {
+                _cfgStageMsg = "No se puede eliminar una etapa con leads.";
+                return;
+            }
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ===== Configuracion: campos =====
+    private async Task AddFieldAsync()
+    {
+        _cfgFieldMsg = null;
+        if (string.IsNullOrWhiteSpace(_nf.Label))
+        {
+            _cfgFieldMsg = "Escribe una etiqueta.";
+            return;
+        }
+        if (_cfgStageId == Guid.Empty)
+        {
+            _cfgFieldMsg = "Selecciona una etapa.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var options = string.IsNullOrWhiteSpace(_nf.Options) ? null : _nf.Options!.Replace(",", "\n").Trim();
+            await PipelineSvc.CreateFieldAsync(
+                new CreatePipelineFieldRequest(_cfgStageId, _nf.Label!, _nf.FieldType, _nf.Column, options), actor);
+            _nf = new NewFieldForm();
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteFieldAsync(Guid fieldId)
+    {
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await PipelineSvc.DeleteFieldAsync(fieldId, actor);
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ===== Helpers =====
+    private void ReplaceLead(LeadDto updated)
+    {
+        var i = _leads.FindIndex(l => l.Id == updated.Id);
+        if (i >= 0) { _leads[i] = updated; }
+    }
+
+    private int CountOpen() => _leads.Count(l => l.Status == LeadStatus.Open);
+    private int CountWon() => _leads.Count(l => l.Status == LeadStatus.Won);
+
+    private string PipelineValue()
+    {
+        var total = _leads.Where(l => l.Status == LeadStatus.Open).Sum(l => l.EstimatedValue ?? 0);
+        return Money(total, _leads.FirstOrDefault(l => l.Currency is not null)?.Currency);
+    }
+
+    private static string Money(decimal v, string? currency) => $"$ {v:N0}{(string.IsNullOrWhiteSpace(currency) ? "" : " " + currency)}";
+
+    private string StageName(Guid stageId) => _stages.FirstOrDefault(s => s.Id == stageId)?.Name ?? "—";
+
+    private static string StageTag(PipelineStageDto s) =>
+        s.IsClosedWon ? "Cierre ganado" : s.IsClosedLost ? "Cierre perdido" : "";
+
+    private static string StatusText(LeadStatus status) => status switch
+    {
+        LeadStatus.Won => "Ganado",
+        LeadStatus.Lost => "Perdido",
+        _ => "Abierto"
+    };
+
+    private static IEnumerable<string> SelectOptions(PipelineFieldDto f) =>
+        string.IsNullOrWhiteSpace(f.Options)
+            ? Enumerable.Empty<string>()
+            : f.Options.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private string UserEmail(Guid id) => _userEmails.TryGetValue(id, out var e) ? e : "";
+    private string UserInitials(Guid id)
+    {
+        var email = UserEmail(id);
+        return string.IsNullOrEmpty(email) ? "?" : email[..1].ToUpperInvariant();
+    }
+
+    private async Task<Guid> ActorAsync()
+    {
+        if (AuthState is null) { return Guid.Empty; }
+        var st = await AuthState;
+        return Guid.TryParse(st.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+    }
+
+    private sealed class NewLeadForm
+    {
+        public string ContactName { get; set; } = "";
+        public string? ContactPhone { get; set; }
+        public string? Destination { get; set; }
+        public decimal? EstimatedValue { get; set; }
+        public string? Currency { get; set; } = "COP";
+        public Guid StageId { get; set; }
+    }
+
+    private sealed class EditLeadForm
+    {
+        public string ContactName { get; set; } = "";
+        public string? ContactPhone { get; set; }
+        public string? Destination { get; set; }
+        public decimal? EstimatedValue { get; set; }
+        public string? Currency { get; set; }
+    }
+
+    private sealed class NewFieldForm
+    {
+        public string? Label { get; set; }
+        public PipelineFieldType FieldType { get; set; } = PipelineFieldType.Text;
+        public int Column { get; set; } = 1;
+        public string? Options { get; set; }
+    }
+}
