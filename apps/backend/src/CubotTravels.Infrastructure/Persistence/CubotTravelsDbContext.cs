@@ -110,6 +110,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
         {
             b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne(x => x.Plan).WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.Restrict);
+            b.Property(x => x.PaymentMethodLabel).HasMaxLength(80);
             b.HasIndex(x => x.TenantId);
         });
 

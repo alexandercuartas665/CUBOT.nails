@@ -47,6 +47,7 @@ public static class DependencyInjection
             .SetApplicationName("CubotTravels")
             .PersistKeysToDbContext<CubotTravelsDbContext>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
+        services.AddHttpClient<CubotTravels.Application.Admin.IWompiApiClient, Wompi.WompiApiClient>();
         services.AddScoped<DatabaseSeeder>();
 
         return services;

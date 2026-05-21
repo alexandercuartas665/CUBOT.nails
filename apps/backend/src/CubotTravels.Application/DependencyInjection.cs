@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<IWompiConfigService, WompiConfigService>();
         services.AddScoped<IWompiWebhookService, WompiWebhookService>();
         services.AddScoped<IWompiCheckoutService, WompiCheckoutService>();
+        services.AddScoped<IRecurringBillingService, RecurringBillingService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<Tenancy.ITenantUserService, Tenancy.TenantUserService>();
         services.AddScoped<Tenancy.IEvolutionConfigService, Tenancy.EvolutionConfigService>();
