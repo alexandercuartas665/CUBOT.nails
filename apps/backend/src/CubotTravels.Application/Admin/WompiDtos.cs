@@ -33,3 +33,6 @@ public sealed record SaveWompiConfigRequest(
     int MaxRetries);
 
 public sealed record WompiValidationResult(bool Ok, string Message);
+
+/// <summary>Resultado de generar un checkout: la URL de pago de Wompi y la referencia creada.</summary>
+public sealed record WompiCheckoutResult(bool Ok, string? CheckoutUrl, string? Reference, string? Error);

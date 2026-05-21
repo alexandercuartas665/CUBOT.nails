@@ -5,7 +5,10 @@
 @inject ISubscriptionAdminService SubsSvc
 @inject IPaymentAdminService PaymentsSvc
 @inject IPlanAdminService PlansSvc
+@inject IWompiCheckoutService CheckoutSvc
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Mi cuenta - CUBOT.travels</PageTitle>
 
@@ -116,9 +119,15 @@ else
             <div style="font-weight:700;">Metodo de pago de tu suscripcion</div>
             <p class="text-muted" style="font-size:0.88rem;margin:4px 0 0;max-width:680px;">
                 CUBOT.travels cobra tu plan a traves de su pasarela Wompi. No necesitas configurar llaves ni una pasarela propia.
-                El pago en linea (tarjeta / PSE) y la actualizacion del metodo de pago estaran disponibles cuando se habilite el cobro por Wompi.
+                Al pagar se abre el checkout seguro de Wompi (tarjeta / PSE); la confirmacion se aplica automaticamente.
             </p>
-            <button class="btn btn-outline-secondary btn-sm" style="margin-top:10px;" disabled>Pagar / actualizar metodo (proximamente)</button>
+            <button class="btn btn-primary btn-sm" style="margin-top:10px;" @onclick="PayNow" disabled="@(_checkoutBusy || _sub is null)">
+                @(_checkoutBusy ? "Generando checkout..." : "Pagar suscripcion ahora")
+            </button>
+            @if (_checkoutError is not null)
+            {
+                <div class="text-danger small" style="margin-top:8px;">@_checkoutError</div>
+            }
         </div>
     </div>
 
@@ -466,6 +475,36 @@ else
         return parts.Length == 1
             ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
             : $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant();
+    }
+
+    private bool _checkoutBusy;
+    private string? _checkoutError;
+
+    private async Task PayNow()
+    {
+        _checkoutError = null;
+        _checkoutBusy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var returnUrl = $"{Nav.BaseUri}mi-cuenta";
+            var result = await CheckoutSvc.CreateSubscriptionCheckoutAsync(_tenantId, returnUrl, actor);
+            if (!result.Ok || result.CheckoutUrl is null)
+            {
+                _checkoutError = result.Error ?? "No se pudo generar el cobro.";
+                return;
+            }
+            await ReloadAsync(); // refleja el nuevo pago Pendiente en "Mis facturas"
+            await JS.InvokeVoidAsync("open", result.CheckoutUrl, "_blank");
+        }
+        catch (Exception ex)
+        {
+            _checkoutError = ex.Message;
+        }
+        finally
+        {
+            _checkoutBusy = false;
+        }
     }
 
     private async Task<Guid> ActorAsync()
