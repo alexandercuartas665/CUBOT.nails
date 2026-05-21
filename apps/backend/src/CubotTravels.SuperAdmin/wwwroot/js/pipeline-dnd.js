@@ -1,0 +1,72 @@
+// Drag-and-drop del tablero Pipeline.
+// El DnD nativo de HTML5 no funciona en Blazor Server porque dragover.preventDefault()
+// debe ser sincrono en el cliente y Blazor enruta los eventos al servidor de forma
+// asincrona (para cuando vuelve el preventDefault, el navegador ya descarto la zona de
+// soltado). Aqui hacemos el preventDefault del lado cliente y devolvemos el movimiento
+// a .NET via invokeMethodAsync. Delegacion a nivel document: sobrevive a los re-render
+// del tablero (Blazor reemplaza los nodos, pero los listeners de document persisten).
+window.cubotPipeline = (function () {
+  let dotnet = null;
+  let draggedId = null;
+  let wired = false;
+
+  function colOf(target) {
+    return target && target.closest ? target.closest('.kb-col[data-stage-id]') : null;
+  }
+
+  function wire() {
+    if (wired) { return; }
+    wired = true;
+
+    document.addEventListener('dragstart', function (e) {
+      const card = e.target.closest ? e.target.closest('.kb-card[data-lead-id]') : null;
+      if (!card) { return; }
+      draggedId = card.getAttribute('data-lead-id');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', draggedId); } catch (_) { }
+      }
+      card.classList.add('dragging');
+    });
+
+    document.addEventListener('dragend', function (e) {
+      const card = e.target.closest ? e.target.closest('.kb-card') : null;
+      if (card) { card.classList.remove('dragging'); }
+      document.querySelectorAll('.kb-col.drop-hover').forEach(function (c) { c.classList.remove('drop-hover'); });
+    });
+
+    document.addEventListener('dragover', function (e) {
+      const col = colOf(e.target);
+      if (!col) { return; }
+      e.preventDefault(); // sincrono: habilita el drop
+      if (e.dataTransfer) { e.dataTransfer.dropEffect = 'move'; }
+    });
+
+    document.addEventListener('dragenter', function (e) {
+      const col = colOf(e.target);
+      if (col) { col.classList.add('drop-hover'); }
+    });
+
+    document.addEventListener('dragleave', function (e) {
+      const col = colOf(e.target);
+      if (col && !col.contains(e.relatedTarget)) { col.classList.remove('drop-hover'); }
+    });
+
+    document.addEventListener('drop', function (e) {
+      const col = colOf(e.target);
+      if (!col) { return; }
+      e.preventDefault();
+      col.classList.remove('drop-hover');
+      const stageId = col.getAttribute('data-stage-id');
+      const leadId = draggedId || (e.dataTransfer ? e.dataTransfer.getData('text/plain') : null);
+      draggedId = null;
+      if (leadId && stageId && dotnet) {
+        dotnet.invokeMethodAsync('MoveLeadFromJs', leadId, stageId);
+      }
+    });
+  }
+
+  return {
+    init: function (ref) { dotnet = ref; wire(); }
+  };
+})();

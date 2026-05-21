@@ -3,9 +3,11 @@
 @* prerender:false evita que OnInitializedAsync corra dos veces (SSR + circuito) y choque el DbContext scoped al cargar por URL directa. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using CubotTravels.Application.Tenancy
+@implements IDisposable
 @inject IPipelineService PipelineSvc
 @inject ILeadService LeadsSvc
 @inject ITenantUserService UsersSvc
+@inject IJSRuntime JS
 
 <PageTitle>Pipeline - CUBOT.travels</PageTitle>
 
@@ -61,13 +63,7 @@ else
         @foreach (var stage in _stages)
         {
             var leadsInStage = _leads.Where(l => l.StageId == stage.Id).ToList();
-            <div class="kb-col @(_dragOverStageId == stage.Id ? "drop-hover" : "")"
-                 @ondragenter:preventDefault="true"
-                 @ondragover:preventDefault="true"
-                 @ondrop:preventDefault="true"
-                 @ondragenter="() => _dragOverStageId = stage.Id"
-                 @ondragleave="() => _dragOverStageId = null"
-                 @ondrop="() => OnDropAsync(stage.Id)">
+            <div class="kb-col" data-stage-id="@stage.Id">
                 <div class="kb-col-head">
                     <div>
                         <div class="kb-col-title">@stage.Name</div>
@@ -84,8 +80,7 @@ else
                     {
                         @foreach (var lead in leadsInStage)
                         {
-                            <div class="kb-card" draggable="true"
-                                 @ondragstart="() => _draggedLeadId = lead.Id"
+                            <div class="kb-card" draggable="true" data-lead-id="@lead.Id"
                                  @onclick="() => OpenLeadAsync(lead.Id)">
                                 <div class="kb-cardrow">
                                     <span class="nm">@lead.ContactName</span>
@@ -435,8 +430,7 @@ else
     private Dictionary<Guid, string> _userEmails = new();
     private int _conversion;
 
-    private Guid? _draggedLeadId;
-    private Guid? _dragOverStageId;
+    private DotNetObjectReference<Pipeline>? _selfRef;
 
     // Nuevo lead
     private bool _newLeadOpen;
@@ -487,23 +481,34 @@ else
         _conversion = _leads.Count == 0 ? 0 : (int)Math.Round(100.0 * won / _leads.Count);
     }
 
-    // ===== Drag & drop =====
-    private async Task OnDropAsync(Guid stageId)
+    // ===== Drag & drop (interop JS: ver wwwroot/js/pipeline-dnd.js) =====
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        _dragOverStageId = null;
-        if (_draggedLeadId is not Guid leadId) { return; }
-        var lead = _leads.FirstOrDefault(l => l.Id == leadId);
-        _draggedLeadId = null;
-        if (lead is null || lead.StageId == stageId) { return; }
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("cubotPipeline.init", _selfRef);
+        }
+    }
+
+    [JSInvokable]
+    public async Task MoveLeadFromJs(string leadId, string stageId)
+    {
+        if (!Guid.TryParse(leadId, out var lid) || !Guid.TryParse(stageId, out var sid)) { return; }
+        var lead = _leads.FirstOrDefault(l => l.Id == lid);
+        if (lead is null || lead.StageId == sid) { return; }
 
         var actor = await ActorAsync();
-        var updated = await LeadsSvc.MoveAsync(leadId, new MoveLeadRequest(stageId), actor);
+        var updated = await LeadsSvc.MoveAsync(lid, new MoveLeadRequest(sid), actor);
         if (updated is not null)
         {
             ReplaceLead(updated);
             RecalcKpis();
+            await InvokeAsync(StateHasChanged);
         }
     }
+
+    public void Dispose() => _selfRef?.Dispose();
 
     // ===== Nuevo lead =====
     private void OpenNewLead(Guid? stageId)
