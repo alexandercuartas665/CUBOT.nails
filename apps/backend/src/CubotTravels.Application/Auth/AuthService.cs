@@ -28,6 +28,28 @@ public sealed class AuthService : IAuthService
         _tokenService = tokenService;
     }
 
+    public async Task<ChangePasswordResult> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
+        {
+            return new ChangePasswordResult(false, "La nueva clave debe tener al menos 6 caracteres.");
+        }
+
+        var user = await _db.PlatformUsers.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return new ChangePasswordResult(false, "Usuario no encontrado.");
+        }
+        if (string.IsNullOrEmpty(user.PasswordHash) || !_passwordHasher.Verify(user.PasswordHash, currentPassword))
+        {
+            return new ChangePasswordResult(false, "La clave actual no es correcta.");
+        }
+
+        user.PasswordHash = _passwordHasher.Hash(newPassword);
+        await _db.SaveChangesAsync(cancellationToken);
+        return new ChangePasswordResult(true, null);
+    }
+
     public async Task<TokenResponse?> AuthenticateAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         var email = Normalize(request.Email);

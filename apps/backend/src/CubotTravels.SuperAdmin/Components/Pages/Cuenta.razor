@@ -11,6 +11,7 @@
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject CubotTravels.Application.Auth.IAuthService AuthSvc
 
 <PageTitle>Mi cuenta - CUBOT.travels</PageTitle>
 
@@ -214,6 +215,51 @@ else
             </table>
         </div>
     }
+
+    <h2 style="font-size:1.05rem;font-weight:700;margin:26px 0 12px;">Acceso y seguridad</h2>
+    <div class="card" style="max-width:1040px;padding:18px 22px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+            <div>
+                <div style="font-weight:600;">Clave de acceso</div>
+                <div class="text-muted" style="font-size:12px;">Cambia la clave con la que ingresas a la plataforma.</div>
+            </div>
+            <button class="btn btn-outline-secondary" @onclick="OpenPassword">Cambiar clave</button>
+        </div>
+    </div>
+}
+
+@if (_pwOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog">
+            <div class="modal-head">
+                <h3>Cambiar clave</h3>
+                <button class="modal-close" @onclick="() => _pwOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="field">
+                    <label class="form-label">Clave actual</label>
+                    <input class="form-control" type="password" @bind="_pwCurrent" autocomplete="current-password" />
+                </div>
+                <div class="field">
+                    <label class="form-label">Nueva clave</label>
+                    <input class="form-control" type="password" @bind="_pwNew" autocomplete="new-password" />
+                </div>
+                <div class="field">
+                    <label class="form-label">Confirma la nueva clave</label>
+                    <input class="form-control" type="password" @bind="_pwConfirm" autocomplete="new-password" />
+                </div>
+                @if (_pwError is not null)
+                {
+                    <div class="text-danger small">@_pwError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="() => _pwOpen = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ChangePasswordAsync" disabled="@_pwBusy">Guardar clave</button>
+            </div>
+        </div>
+    </div>
 }
 
 @if (_profileOpen)
@@ -395,6 +441,13 @@ else
     private string? _logoPreview;
     private readonly ProfileForm _pf = new();
 
+    private bool _pwOpen;
+    private bool _pwBusy;
+    private string? _pwError;
+    private string _pwCurrent = "";
+    private string _pwNew = "";
+    private string _pwConfirm = "";
+
     private bool _changeOpen;
     private bool _changeBusy;
     private string? _changeError;
@@ -456,6 +509,39 @@ else
     }
 
     private void CloseChange() => _changeOpen = false;
+
+    private void OpenPassword()
+    {
+        _pwError = null;
+        _pwCurrent = _pwNew = _pwConfirm = "";
+        _pwOpen = true;
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        _pwError = null;
+        if (_pwNew != _pwConfirm)
+        {
+            _pwError = "Las claves nuevas no coinciden.";
+            return;
+        }
+        _pwBusy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var result = await AuthSvc.ChangePasswordAsync(actor, _pwCurrent, _pwNew);
+            if (!result.Ok)
+            {
+                _pwError = result.Error ?? "No se pudo cambiar la clave.";
+                return;
+            }
+            _pwOpen = false;
+        }
+        finally
+        {
+            _pwBusy = false;
+        }
+    }
 
     private async Task ConfirmChangeAsync()
     {

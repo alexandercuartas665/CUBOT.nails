@@ -105,6 +105,10 @@ else
                                 {
                                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => ShowLink(tk)">Ver link</button>
                                 }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ResetAsync(a)" disabled="@_busy">Restablecer clave</button>
+                                }
                                 @if (a.Status == PlatformUserStatus.Active)
                                 {
                                     <button class="btn btn-sm btn-outline-danger" @onclick="() => SetStatusAsync(a, PlatformUserStatus.Suspended)">Suspender</button>
@@ -338,6 +342,22 @@ else
             var actor = await ActorAsync();
             await AdvisorsSvc.SetStatusAsync(a.Id, status, actor);
             await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ResetAsync(AdvisorDto a)
+    {
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var updated = await AdvisorsSvc.ResendInviteAsync(a.Id, actor);
+            await ReloadAsync();
+            if (updated?.InvitationToken is { } tk)
+            {
+                ShowLink(tk);
+            }
         }
         finally { _busy = false; }
     }
