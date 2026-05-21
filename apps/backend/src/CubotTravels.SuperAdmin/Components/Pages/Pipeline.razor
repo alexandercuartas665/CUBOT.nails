@@ -23,7 +23,10 @@
         <p class="page-sub" style="margin-bottom:0;">Embudo Kanban con etapas configurables por agencia para mover leads hasta el cierre.</p>
     </div>
     <div style="display:flex;gap:8px;">
-        <button class="btn btn-outline-secondary" @onclick="OpenConfig">Configurar embudo</button>
+        @if (_canManage)
+        {
+            <button class="btn btn-outline-secondary" @onclick="OpenConfig">Configurar embudo</button>
+        }
         <button class="btn btn-primary" @onclick="() => OpenNewLead(null)" disabled="@(_stages.Count == 0)">+ Nuevo lead</button>
     </div>
 </div>
@@ -257,6 +260,23 @@ else
                             <label class="form-label">Moneda</label>
                             <input class="form-control" @bind="_el.Currency" />
                         </div>
+                        <div class="pl-field col2">
+                            <label class="form-label">Asesor asignado</label>
+                            @if (_canManage)
+                            {
+                                <select class="form-control" value="@(_editLead.AssignedToTenantUserId?.ToString() ?? "")" @onchange="OnAssignChangedAsync">
+                                    <option value="">Sin asignar</option>
+                                    @foreach (var u in _team)
+                                    {
+                                        <option value="@u.Id">@TeamLabel(u)</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input class="form-control" value="@AssignedLabel()" disabled />
+                            }
+                        </div>
                     </div>
                 </div>
 
@@ -463,6 +483,8 @@ else
     private List<PipelineFieldDto> _fields = new();
     private List<LeadDto> _leads = new();
     private Dictionary<Guid, string> _userEmails = new();
+    private List<TenantUserDto> _team = new();
+    private bool _canManage;
     private int _conversion;
 
     private DotNetObjectReference<Pipeline>? _selfRef;
@@ -491,6 +513,12 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            var role = state.User.FindFirst("tenant_role")?.Value;
+            _canManage = role is "Owner" or "Admin" or "Supervisor";
+        }
         var actor = await ActorAsync();
         await PipelineSvc.EnsureDefaultsAsync(actor);
         await ReloadAsync();
@@ -502,7 +530,8 @@ else
         _stages = (await PipelineSvc.ListStagesAsync()).ToList();
         _fields = (await PipelineSvc.ListFieldsAsync()).ToList();
         _leads = (await LeadsSvc.ListAsync()).ToList();
-        _userEmails = (await UsersSvc.ListAsync()).ToDictionary(u => u.Id, u => u.Email);
+        _team = (await UsersSvc.ListAsync()).ToList();
+        _userEmails = _team.ToDictionary(u => u.Id, u => u.Email);
         if (_cfgStageId == Guid.Empty && _stages.Count > 0)
         {
             _cfgStageId = _stages[0].Id;
@@ -668,6 +697,48 @@ else
             _busy = false;
         }
     }
+
+    // ===== Asignacion de asesor =====
+    private async Task OnAssignChangedAsync(ChangeEventArgs e)
+    {
+        if (_editLead is null) { return; }
+        Guid? tenantUserId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var updated = await LeadsSvc.AssignAsync(_editLead.Id, tenantUserId, actor);
+            if (updated is not null)
+            {
+                ReplaceLead(updated);
+                _editLead = updated;
+                var detail = await LeadsSvc.GetAsync(updated.Id);
+                if (detail is not null)
+                {
+                    _activities = detail.Activities.OrderByDescending(a => a.CreatedAt).ToList();
+                }
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private string TeamLabel(TenantUserDto u)
+    {
+        var role = u.TenantRole switch
+        {
+            TenantRole.Owner => "Propietario",
+            TenantRole.Admin => "Administrador",
+            TenantRole.Supervisor => "Supervisor",
+            _ => "Asesor"
+        };
+        return $"{u.Email} ({role})";
+    }
+
+    private string AssignedLabel() =>
+        _editLead?.AssignedToTenantUserId is Guid id && _userEmails.TryGetValue(id, out var e) ? e : "Sin asignar";
 
     // ===== Configuracion: etapas =====
     private void OpenConfig()

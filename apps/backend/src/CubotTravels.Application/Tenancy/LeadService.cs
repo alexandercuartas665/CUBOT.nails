@@ -182,18 +182,20 @@ public sealed class LeadService : ILeadService
             return null;
         }
 
+        var label = "Lead sin asignar";
         if (tenantUserId is Guid userId)
         {
-            var belongs = await _db.TenantUsers.AnyAsync(tu => tu.Id == userId, cancellationToken);
-            if (!belongs)
+            var email = await _db.TenantUsers.Where(tu => tu.Id == userId)
+                .Select(tu => tu.Email).FirstOrDefaultAsync(cancellationToken);
+            if (email is null)
             {
                 return null;
             }
+            label = $"Asignado a {email}";
         }
 
         lead.AssignedToTenantUserId = tenantUserId;
-        AddActivity(lead.TenantId, lead.Id, "lead.assigned",
-            tenantUserId is null ? "Lead sin asignar" : $"Asignado a {tenantUserId}");
+        AddActivity(lead.TenantId, lead.Id, "lead.assigned", label);
 
         await _db.SaveChangesAsync(cancellationToken);
         return Map(lead);
