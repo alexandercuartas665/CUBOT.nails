@@ -128,4 +128,27 @@ app.MapPost("/auth/logout", async (HttpContext http) =>
     return Results.Redirect("/login");
 }).DisableAntiforgery();
 
+// Descarga del comprobante de pago (PDF). Solo pagos aprobados; el usuario de agencia solo
+// puede descargar comprobantes de su propio tenant; el operador de plataforma puede cualquiera.
+app.MapGet("/comprobante/{paymentId:guid}", async (
+    Guid paymentId,
+    HttpContext http,
+    CubotTravels.Application.Admin.IPaymentReceiptService receipts) =>
+{
+    var receipt = await receipts.GenerateAsync(paymentId);
+    if (receipt is null)
+    {
+        return Results.NotFound();
+    }
+
+    var isOperator = http.User.FindFirst("platform_role") is not null;
+    var ownsTenant = Guid.TryParse(http.User.FindFirst("tenant_id")?.Value, out var tid) && tid == receipt.TenantId;
+    if (!isOperator && !ownsTenant)
+    {
+        return Results.Forbid();
+    }
+
+    return Results.File(receipt.Content, "application/pdf", receipt.FileName);
+}).RequireAuthorization();
+
 app.Run();

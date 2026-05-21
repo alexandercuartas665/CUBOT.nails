@@ -50,6 +50,10 @@ public static class DependencyInjection
         services.AddHttpClient<CubotTravels.Application.Admin.IWompiApiClient, Wompi.WompiApiClient>();
         services.AddScoped<DatabaseSeeder>();
 
+        // Comprobantes PDF (QuestPDF). Licencia Community: gratis para empresas con ingresos < USD 1M/ano.
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        services.AddScoped<Application.Common.IReceiptPdfRenderer, Pdf.QuestPdfReceiptRenderer>();
+
         return services;
     }
 }

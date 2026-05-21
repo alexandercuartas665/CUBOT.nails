@@ -187,7 +187,7 @@ else
         <div class="card" style="max-width:1040px;padding:6px 16px;">
             <table class="table table-hover align-middle" style="margin-bottom:0;">
                 <thead>
-                    <tr><th>Factura</th><th class="text-end">Monto</th><th>Fecha</th><th>Periodo</th><th>Estado</th></tr>
+                    <tr><th>Factura</th><th class="text-end">Monto</th><th>Fecha</th><th>Periodo</th><th>Estado</th><th class="text-end">Comprobante</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var p in _payments)
@@ -198,6 +198,16 @@ else
                             <td style="font-size:12px;color:var(--muted-foreground);">@p.CreatedAt.LocalDateTime.ToString("dd MMM yyyy")</td>
                             <td style="font-size:12px;color:var(--muted-foreground);">@p.BillingPeriodStart.LocalDateTime.ToString("dd MMM") - @p.BillingPeriodEnd.LocalDateTime.ToString("dd MMM yyyy")</td>
                             <td><span class="badge bg-@PayStatusColor(p.Status)">@p.Status</span></td>
+                            <td class="text-end">
+                                @if (p.Status == PaymentStatus.Approved)
+                                {
+                                    <a class="btn btn-outline-secondary" style="padding:2px 10px;font-size:12px;" href="/comprobante/@p.Id" target="_blank">Descargar</a>
+                                }
+                                else
+                                {
+                                    <span class="text-muted" style="font-size:12px;">—</span>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>
