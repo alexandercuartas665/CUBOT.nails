@@ -52,8 +52,6 @@ public sealed class WompiCheckoutService : IWompiCheckoutService
         }
 
         var currency = string.IsNullOrWhiteSpace(config.Currency) ? "COP" : config.Currency.Trim().ToUpperInvariant();
-        var amountInCents = (long)decimal.Round(amount * 100m, 0);
-        var reference = $"SUB-{tenantId:N}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
 
         string integritySecret;
         try
@@ -65,29 +63,46 @@ public sealed class WompiCheckoutService : IWompiCheckoutService
             return new WompiCheckoutResult(false, null, null, "El secret de integridad esta cifrado con una llave anterior; vuelve a guardarlo.");
         }
 
-        var signature = Sha256Hex($"{reference}{amountInCents}{currency}{integritySecret}");
+        // Un solo cobro pendiente por periodo: si ya hay uno, se reutiliza (no se duplica la factura).
+        var existing = await _db.TenantPayments
+            .FirstOrDefaultAsync(p => p.SubscriptionId == subscription.Id
+                                      && p.Status == PaymentStatus.Pending
+                                      && p.BillingPeriodEnd == subscription.CurrentPeriodEndsAt,
+                cancellationToken);
 
-        // Pago Pendiente: el webhook lo confirmara por esta referencia.
-        var payment = new TenantPayment
+        string reference;
+        long amountInCents;
+        if (existing is not null)
         {
-            TenantId = tenantId,
-            SubscriptionId = subscription.Id,
-            Provider = "Wompi",
-            ProviderReference = reference,
-            Amount = amount,
-            Currency = currency,
-            Status = PaymentStatus.Pending,
-            BillingPeriodStart = DateTimeOffset.UtcNow,
-            BillingPeriodEnd = subscription.CurrentPeriodEndsAt
-        };
-        _db.TenantPayments.Add(payment);
+            reference = existing.ProviderReference!;
+            amountInCents = (long)decimal.Round(existing.Amount * 100m, 0);
+            currency = existing.Currency;
+        }
+        else
+        {
+            amountInCents = (long)decimal.Round(amount * 100m, 0);
+            reference = $"SUB-{tenantId:N}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
+            var payment = new TenantPayment
+            {
+                TenantId = tenantId,
+                SubscriptionId = subscription.Id,
+                Provider = "Wompi",
+                ProviderReference = reference,
+                Amount = amount,
+                Currency = currency,
+                Status = PaymentStatus.Pending,
+                BillingPeriodStart = DateTimeOffset.UtcNow,
+                BillingPeriodEnd = subscription.CurrentPeriodEndsAt
+            };
+            _db.TenantPayments.Add(payment);
+            _audit.Write(actorUserId, "payment.checkout", nameof(TenantPayment), payment.Id,
+                previousValue: null,
+                newValue: new { reference, amountInCents, currency },
+                tenantId: tenantId);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
-        _audit.Write(actorUserId, "payment.checkout", nameof(TenantPayment), payment.Id,
-            previousValue: null,
-            newValue: new { reference, amountInCents, currency },
-            tenantId: tenantId);
-
-        await _db.SaveChangesAsync(cancellationToken);
+        var signature = Sha256Hex($"{reference}{amountInCents}{currency}{integritySecret}");
 
         // El nombre del parametro lleva ':'; debe ir codificado (%3A) o el WAF de Wompi/CloudFront
         // bloquea la peticion (403). El navegador, al enviar el form GET, tambien lo codifica.

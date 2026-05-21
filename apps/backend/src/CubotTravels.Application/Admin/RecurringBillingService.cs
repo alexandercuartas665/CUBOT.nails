@@ -108,6 +108,17 @@ public sealed class RecurringBillingService : IRecurringBillingService
 
     private async Task<RecurringResult> ChargeAsync(TenantSubscription subscription, Guid actorUserId, bool system, CancellationToken cancellationToken)
     {
+        // Un solo cobro pendiente por periodo: no se generan facturas duplicadas.
+        var hasPending = await _db.TenantPayments.AnyAsync(
+            p => p.SubscriptionId == subscription.Id
+                 && p.Status == PaymentStatus.Pending
+                 && p.BillingPeriodEnd == subscription.CurrentPeriodEndsAt,
+            cancellationToken);
+        if (hasPending)
+        {
+            return new RecurringResult(false, null, "Ya existe un cobro pendiente para este periodo.");
+        }
+
         var plan = await _db.SaasPlans.AsNoTracking().FirstOrDefaultAsync(p => p.Id == subscription.PlanId, cancellationToken);
         var amount = (subscription.BillingFrequency == BillingFrequency.Yearly ? plan?.YearlyPrice : plan?.MonthlyPrice) ?? 0m;
         if (amount <= 0m)
