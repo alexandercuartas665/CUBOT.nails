@@ -15,4 +15,11 @@ public class TenantUser : TenantEntity
     public string Email { get; set; } = null!;
     public TenantRole TenantRole { get; set; } = TenantRole.Advisor;
     public PlatformUserStatus Status { get; set; } = PlatformUserStatus.Active;
+
+    /// <summary>Alcance de leads del asesor (los admin/owner/supervisor ven todo por rol).</summary>
+    public LeadVisibility LeadVisibility { get; set; } = LeadVisibility.OwnOnly;
+
+    /// <summary>Token de invitacion para que el asesor complete su registro (clave + foto). Null si ya activo.</summary>
+    public string? InvitationToken { get; set; }
+    public DateTimeOffset? InvitationExpiresAt { get; set; }
 }

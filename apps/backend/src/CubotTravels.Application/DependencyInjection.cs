@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IRecurringBillingService, RecurringBillingService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<Tenancy.ITenantUserService, Tenancy.TenantUserService>();
+        services.AddScoped<Tenancy.IAdvisorService, Tenancy.AdvisorService>();
         services.AddScoped<Tenancy.IEvolutionConfigService, Tenancy.EvolutionConfigService>();
         services.AddScoped<Tenancy.IWhatsAppLineService, Tenancy.WhatsAppLineService>();
         services.AddScoped<Tenancy.IPipelineService, Tenancy.PipelineService>();

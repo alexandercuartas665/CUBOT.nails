@@ -59,6 +59,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
         configurationBuilder.Properties<AuditActorType>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<TenantRole>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<PlatformUserStatus>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<LeadVisibility>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<WhatsAppLineStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<LeadStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<FollowUpTaskStatus>().HaveConversion<string>().HaveMaxLength(40);
@@ -168,9 +169,11 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
         modelBuilder.Entity<TenantUser>(b =>
         {
             b.Property(x => x.Email).HasMaxLength(256).IsRequired();
+            b.Property(x => x.InvitationToken).HasMaxLength(128);
             b.HasOne(x => x.PlatformUser).WithMany().HasForeignKey(x => x.PlatformUserId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.TenantId, x.PlatformUserId }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.Email }).IsUnique();
+            b.HasIndex(x => x.InvitationToken);
         });
 
         modelBuilder.Entity<TenantConfiguration>(b =>

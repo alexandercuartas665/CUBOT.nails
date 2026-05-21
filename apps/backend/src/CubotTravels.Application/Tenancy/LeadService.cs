@@ -27,6 +27,18 @@ public sealed class LeadService : ILeadService
             query = query.Where(l => l.StageId == s);
         }
 
+        // Alcance de visibilidad: un asesor con OwnOnly solo ve los leads que tiene asignados.
+        // Owner/Admin/Supervisor (o asesores con visibilidad All) ven todo el embudo.
+        if (_tenantContext.UserId is Guid userId)
+        {
+            var me = await _db.TenantUsers.AsNoTracking()
+                .FirstOrDefaultAsync(tu => tu.PlatformUserId == userId, cancellationToken);
+            if (me is not null && me.TenantRole == TenantRole.Advisor && me.LeadVisibility == LeadVisibility.OwnOnly)
+            {
+                query = query.Where(l => l.AssignedToTenantUserId == me.Id);
+            }
+        }
+
         return await query
             .OrderByDescending(l => l.StageChangedAt)
             .Select(l => Map(l))
