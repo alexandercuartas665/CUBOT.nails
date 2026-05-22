@@ -9,6 +9,7 @@
 @inject IAiInferenceService InferenceSvc
 @inject IAiUsageService UsageSvc
 @inject IWebHostEnvironment Env
+@inject IJSRuntime JS
 
 <PageTitle>Agentes IA - CUBOT.travels</PageTitle>
 
@@ -152,7 +153,8 @@ else
                 {
                     <div class="field">
                         <label class="form-label">Prompt base (comportamiento principal)</label>
-                        <textarea class="form-control" rows="4" @bind="_fPrompt" placeholder="Instrucciones generales que definen el comportamiento del agente..."></textarea>
+                        @RichToolbar("basePrompt", () => _baseEmojiOpen, v => _baseEmojiOpen = v)
+                        <textarea id="basePrompt" class="form-control" rows="4" @bind="_fPrompt" @bind:event="oninput" placeholder="Instrucciones generales que definen el comportamiento del agente..."></textarea>
                     </div>
                 }
                 @if (_editorError is not null)
@@ -285,7 +287,7 @@ else
 @if (_promptModalOpen)
 {
     <div class="modal-overlay" style="z-index:1200;">
-        <div class="modal-dialog" style="max-width:520px;">
+        <div class="modal-dialog" style="max-width:1040px;">
             <div class="modal-head">
                 <h3>@(_promptEditId is null ? "Nuevo prompt" : "Editar prompt")</h3>
                 <button class="modal-close" @onclick="() => _promptModalOpen = false">&times;</button>
@@ -301,7 +303,8 @@ else
                 </div>
                 <div class="field">
                     <label class="form-label">Prompt *</label>
-                    <textarea class="form-control" rows="6" @bind="_pBody" placeholder="Instrucciones que el agente debe seguir cuando aplica esta regla..."></textarea>
+                    @RichToolbar("promptBody", () => _promptEmojiOpen, v => _promptEmojiOpen = v)
+                    <textarea id="promptBody" class="form-control" rows="9" @bind="_pBody" @bind:event="oninput" placeholder="Instrucciones que el agente debe seguir cuando aplica esta regla..."></textarea>
                 </div>
                 @if (_promptError is not null)
                 {
@@ -412,6 +415,15 @@ else
     private string? _rFileUrl;
     private string? _rFileName;
     private string? _resError;
+
+    // Editor de texto (formato WhatsApp + emojis)
+    private bool _baseEmojiOpen;
+    private bool _promptEmojiOpen;
+    private static readonly string[] Emojis =
+    {
+        "😀","😅","👍","🙏","🎉","✈️","🏖️","🌴","🧳","📍","📅","💲",
+        "🔥","✅","❤️","😍","🤝","📞","💬","⭐","🌎","☀️","🏨","🛫"
+    };
 
     // Chat de prueba del agente
     private readonly List<AiChatTurn> _testTurns = new();
@@ -608,6 +620,33 @@ else
         AgentResourceType.Location => "GEO",
         _ => "TXT"
     };
+
+    // ===== Editor de texto enriquecido (formato WhatsApp + emojis) =====
+    private RenderFragment RichToolbar(string targetId, Func<bool> emojiOpen, Action<bool> setEmojiOpen) =>@<div class="rt-toolbar">
+        <button type="button" class="rt-btn" title="Negrita (*texto*)" @onclick="() => Bold(targetId)"><b>B</b></button>
+        <button type="button" class="rt-btn" title="Cursiva (_texto_)" @onclick="() => Italic(targetId)"><i>i</i></button>
+        <button type="button" class="rt-btn" title="Tachado (~texto~)" @onclick="() => Strike(targetId)"><s>S</s></button>
+        <button type="button" class="rt-btn" title="Monoespaciado" @onclick="() => Mono(targetId)">&lt;/&gt;</button>
+        <button type="button" class="rt-btn" title="Vineta" @onclick="() => Bullet(targetId)">&bull;</button>
+        <button type="button" class="rt-btn @(emojiOpen() ? "on" : "")" title="Emojis" @onclick="() => setEmojiOpen(!emojiOpen())">😀</button>
+        @if (emojiOpen())
+        {
+            <div class="rt-emojis">
+                @foreach (var em in Emojis)
+                {
+                    <button type="button" class="rt-emoji" @onclick="() => Emoji(targetId, em)">@em</button>
+                }
+            </div>
+        }
+    </div>;
+
+    private Task Bold(string id) => Fmt(id, "*", "*");
+    private Task Italic(string id) => Fmt(id, "_", "_");
+    private Task Strike(string id) => Fmt(id, "~", "~");
+    private Task Mono(string id) => Fmt(id, "```", "```");
+    private Task Bullet(string id) => JS.InvokeVoidAsync("cubotAgentEditor.insert", id, "\n- ").AsTask();
+    private async Task Fmt(string id, string before, string after) => await JS.InvokeVoidAsync("cubotAgentEditor.wrap", id, before, after);
+    private async Task Emoji(string id, string e) => await JS.InvokeVoidAsync("cubotAgentEditor.insert", id, e);
 
     private async Task TestKeyDown(KeyboardEventArgs e)
     {
