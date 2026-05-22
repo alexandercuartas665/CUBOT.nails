@@ -20,6 +20,9 @@ public interface ILeadService
     /// <summary>Envia el lead a historial (lo quita del embudo) con motivo y observacion; registra actividad.</summary>
     Task<bool> ArchiveAsync(Guid leadId, string reason, string? note, Guid actorUserId, CancellationToken cancellationToken = default);
 
+    /// <summary>Quita el lead del historial y lo regresa al tablero; registra actividad. Null si no existe.</summary>
+    Task<LeadDto?> UnarchiveAsync(Guid leadId, Guid actorUserId, CancellationToken cancellationToken = default);
+
     /// <summary>Lista los leads en historial (archivados), respetando la visibilidad por rol del asesor.</summary>
     Task<IReadOnlyList<ArchivedLeadDto>> ListArchivedAsync(CancellationToken cancellationToken = default);
 }

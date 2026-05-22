@@ -410,6 +410,31 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .pl-chip { background: var(--card); border: 1px solid var(--border); color: var(--muted-foreground); padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; }
 .pl-chip svg { width: 10px; height: 10px; }
 
+/* Conmutador de vista Kanban / Lista */
+.pl-view { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--card); }
+.pl-view-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: none; background: none; color: var(--muted-foreground); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.pl-view-btn + .pl-view-btn { border-left: 1px solid var(--border); }
+.pl-view-btn svg { width: 15px; height: 15px; }
+.pl-view-btn.on { background: var(--primary); color: #fff; }
+
+/* Vista lista del tablero */
+.pl-list { border: 1px solid var(--border); border-radius: 12px; background: var(--card); overflow: hidden; }
+.pl-list-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.pl-list-table th { text-align: left; padding: 11px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted-foreground); border-bottom: 1px solid var(--border); }
+.pl-list-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.pl-list-table tbody tr:last-child td { border-bottom: none; }
+.pl-list-table tbody tr:hover { background: var(--muted); }
+.pl-list-table tr.pl-row-reply { background: color-mix(in srgb, var(--destructive) 6%, transparent); }
+.pl-row-tag { margin-top: 3px; font-size: 11px; font-weight: 600; color: var(--destructive); }
+
+/* Filtros del modal de historial */
+.pl-hist-filters { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.pl-hist-table th { white-space: nowrap; }
+
+.btn-icon { background: none; border: none; padding: 5px; border-radius: 6px; color: var(--muted-foreground); cursor: pointer; display: inline-grid; place-items: center; }
+.btn-icon:hover { background: var(--muted); color: var(--destructive); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
 .pl-chat-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 9px; }
 .pl-date-divider { text-align: center; font-size: 10px; color: var(--muted-foreground); letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; margin: 4px 0 2px; display: flex; align-items: center; gap: 10px; }
 .pl-date-divider::before, .pl-date-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }

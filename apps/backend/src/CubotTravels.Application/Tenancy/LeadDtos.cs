@@ -30,7 +30,11 @@ public sealed record ArchivedLeadDto(
     string? ArchiveNote,
     DateTimeOffset? ArchivedAt,
     string? ArchivedByName,
-    Guid? AssignedToTenantUserId);
+    Guid? AssignedToTenantUserId,
+    Guid StageId,
+    LeadStatus Status,
+    DateTimeOffset StageChangedAt,
+    IReadOnlyDictionary<string, string?> FieldValues);
 
 public sealed record CreateLeadRequest(
     string ContactName,

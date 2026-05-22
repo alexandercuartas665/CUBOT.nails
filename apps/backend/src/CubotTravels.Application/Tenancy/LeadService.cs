@@ -236,11 +236,35 @@ public sealed class LeadService : ILeadService
             }
         }
 
-        return await query
+        var rows = await query
             .OrderByDescending(l => l.ArchivedAt)
-            .Select(l => new ArchivedLeadDto(l.Id, l.ContactName, l.ContactPhone, l.Destination, l.EstimatedValue, l.Currency,
-                l.ArchiveReason, l.ArchiveNote, l.ArchivedAt, l.ArchivedByName, l.AssignedToTenantUserId))
+            .Select(l => new
+            {
+                l.Id, l.ContactName, l.ContactPhone, l.Destination, l.EstimatedValue, l.Currency,
+                l.ArchiveReason, l.ArchiveNote, l.ArchivedAt, l.ArchivedByName, l.AssignedToTenantUserId,
+                l.StageId, l.Status, l.StageChangedAt, l.FieldValuesJson
+            })
             .ToListAsync(cancellationToken);
+
+        return rows.Select(r => new ArchivedLeadDto(r.Id, r.ContactName, r.ContactPhone, r.Destination,
+            r.EstimatedValue, r.Currency, r.ArchiveReason, r.ArchiveNote, r.ArchivedAt, r.ArchivedByName,
+            r.AssignedToTenantUserId, r.StageId, r.Status, r.StageChangedAt, DeserializeValues(r.FieldValuesJson))).ToList();
+    }
+
+    public async Task<LeadDto?> UnarchiveAsync(Guid leadId, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, cancellationToken);
+        if (lead is null) { return null; }
+
+        lead.ArchivedAt = null;
+        lead.ArchiveReason = null;
+        lead.ArchiveNote = null;
+        lead.ArchivedByName = null;
+
+        AddActivity(lead.TenantId, lead.Id, "lead.restored", "Regresado al tablero desde historial");
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return Map(lead);
     }
 
     private async Task<string?> ResolveActorNameAsync(Guid actorUserId, Guid tenantId, CancellationToken ct)

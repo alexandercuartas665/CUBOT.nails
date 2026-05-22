@@ -87,6 +87,16 @@ else
                 <option value="unanswered">Sin responder primero</option>
             </select>
         </div>
+        <div class="pl-view" role="group" aria-label="Modo de vista">
+            <button class="pl-view-btn @(_boardView == "kanban" ? "on" : "")" @onclick='() => _boardView = "kanban"' title="Vista Kanban">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="18" rx="1"/><rect x="9" y="3" width="6" height="12" rx="1"/><rect x="15" y="3" width="6" height="9" rx="1"/></svg>
+                Kanban
+            </button>
+            <button class="pl-view-btn @(_boardView == "list" ? "on" : "")" @onclick='() => _boardView = "list"' title="Vista lista">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                Lista
+            </button>
+        </div>
         <div class="pl-filt-anchor">
             <button class="btn btn-outline-secondary @(FiltersActive ? "pl-filt-on" : "")" @onclick="() => _filtersOpen = !_filtersOpen">
                 Filtros@(FiltersActive ? $" ({ActiveFilterCount})" : "")
@@ -150,6 +160,61 @@ else
         </div>
     </div>
 
+    @if (_boardView == "list")
+    {
+        var listLeads = AllFilteredLeads();
+        <div class="pl-list">
+            @if (listLeads.Count == 0)
+            {
+                <div class="text-muted" style="font-size:13px;padding:18px 2px;">No hay leads que coincidan con la busqueda o los filtros.</div>
+            }
+            else
+            {
+                <table class="data-table pl-list-table">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th><th>Etapa</th><th>Destino</th><th>Fecha</th><th>Pax</th>
+                            <th>Valor</th><th>Asesor</th><th>Estado</th><th>En etapa</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var lead in listLeads)
+                        {
+                            var lpend = PendingFor(lead);
+                            <tr class="@(lpend is not null ? "pl-row-reply" : "")" style="cursor:pointer;" @onclick="() => OpenLeadAsync(lead.Id)">
+                                <td>
+                                    <div style="font-weight:600;">@lead.ContactName</div>
+                                    @if (!string.IsNullOrWhiteSpace(lead.ContactPhone))
+                                    {
+                                        <div class="text-muted" style="font-size:11.5px;">@lead.ContactPhone</div>
+                                    }
+                                    @if (lpend is { } lp)
+                                    {
+                                        <div class="pl-row-tag">@lp.UnansweredCount sin responder · @WaitingLabel(lp.WaitingSince)</div>
+                                    }
+                                </td>
+                                <td>@StageName(lead.StageId)</td>
+                                <td>@RouteFrom(lead)@(RouteTo(lead) is { } rt ? $" → {rt}" : "")</td>
+                                <td>@(Field(lead, "fechaTentativa") ?? "—")</td>
+                                <td>@(PaxLabel(lead) ?? "—")</td>
+                                <td>@(lead.EstimatedValue is decimal v ? Money(v, lead.Currency) : "—")</td>
+                                <td>@(AsesorName(lead) ?? "Sin asesor")</td>
+                                <td><span class="pl-chip">@StatusText(lead.Status)</span></td>
+                                <td class="text-muted">@TimeInStageLabel(lead)</td>
+                                <td>
+                                    <button class="btn-icon" title="Llevar a historial" @onclick="() => OpenArchive(lead)" @onclick:stopPropagation="true">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+    else
+    {
     <div class="kanban">
         @foreach (var stage in _stages)
         {
@@ -257,6 +322,7 @@ else
             </div>
         }
     </div>
+    }
 }
 
 @* ===== Modal: nuevo lead ===== *@
@@ -825,7 +891,7 @@ else
 @if (_historyOpen)
 {
     <div class="modal-overlay">
-        <div class="modal-dialog" style="max-width:920px;">
+        <div class="modal-dialog" style="max-width:1180px;">
             <div class="modal-head">
                 <h3>Historial de clientes</h3>
                 <button class="modal-close" @onclick="() => _historyOpen = false">&times;</button>
@@ -838,27 +904,79 @@ else
                 }
                 else
                 {
-                    <table class="data-table" style="width:100%;font-size:12.5px;">
-                        <thead>
-                            <tr><th>Cliente</th><th>Destino</th><th>Valor</th><th>Motivo</th><th>Observacion</th><th>Archivado</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var h in _history)
+                    <div class="pl-hist-filters">
+                        <div class="pl-search" style="flex:1;min-width:200px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input placeholder="Buscar cliente, telefono o destino..." @bind="_histSearch" @bind:event="oninput" />
+                            @if (!string.IsNullOrEmpty(_histSearch))
                             {
-                                <tr>
-                                    <td style="font-weight:600;">@h.ContactName</td>
-                                    <td>@(string.IsNullOrWhiteSpace(h.Destination) ? "—" : h.Destination)</td>
-                                    <td>@(h.EstimatedValue is decimal v ? Money(v, h.Currency) : "—")</td>
-                                    <td><span class="pl-chip">@(h.ArchiveReason ?? "—")</span></td>
-                                    <td style="color:var(--muted-foreground);">@(string.IsNullOrWhiteSpace(h.ArchiveNote) ? "—" : h.ArchiveNote)</td>
-                                    <td style="color:var(--muted-foreground);">
-                                        @(h.ArchivedAt is { } a ? a.LocalDateTime.ToString("dd MMM yyyy") : "—")
-                                        @if (!string.IsNullOrWhiteSpace(h.ArchivedByName)) { <text> &middot; @h.ArchivedByName</text> }
-                                    </td>
-                                </tr>
+                                <button class="pl-search-clear" @onclick="() => _histSearch = string.Empty" title="Limpiar">&times;</button>
                             }
-                        </tbody>
-                    </table>
+                        </div>
+                        <select class="form-control" style="max-width:220px;" @bind="_histReason">
+                            <option value="">Todos los motivos</option>
+                            @foreach (var r in _history.Where(h => !string.IsNullOrWhiteSpace(h.ArchiveReason)).Select(h => h.ArchiveReason!).Distinct())
+                            {
+                                <option value="@r">@r</option>
+                            }
+                        </select>
+                        <select class="form-control" style="max-width:220px;" @bind="_histAsesor">
+                            <option value="">Todos los asesores</option>
+                            @foreach (var u in _team)
+                            {
+                                <option value="@u.Id">@u.Email</option>
+                            }
+                        </select>
+                    </div>
+
+                    var histRows = FilteredHistory();
+                    @if (!histRows.Any())
+                    {
+                        <div class="text-muted" style="font-size:13px;padding:14px 2px;">Ningun cliente del historial coincide con los filtros.</div>
+                    }
+                    else
+                    {
+                        <div style="overflow-x:auto;">
+                            <table class="data-table pl-hist-table" style="width:100%;font-size:12.5px;">
+                                <thead>
+                                    <tr>
+                                        <th>Cliente</th><th>Destino</th><th>Etapa</th><th>Valor</th><th>Asesor</th>
+                                        <th>Datos</th><th>Motivo</th><th>Observacion</th><th>Archivado</th><th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var h in histRows)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div style="font-weight:600;">@h.ContactName</div>
+                                                @if (!string.IsNullOrWhiteSpace(h.ContactPhone))
+                                                {
+                                                    <div class="text-muted" style="font-size:11.5px;">@h.ContactPhone</div>
+                                                }
+                                            </td>
+                                            <td>@(string.IsNullOrWhiteSpace(h.Destination) ? "—" : h.Destination)</td>
+                                            <td>@StageName(h.StageId)</td>
+                                            <td>@(h.EstimatedValue is decimal v ? Money(v, h.Currency) : "—")</td>
+                                            <td>@ArchAsesor(h)</td>
+                                            <td class="text-muted" style="max-width:220px;">@HistDatos(h)</td>
+                                            <td><span class="pl-chip">@(h.ArchiveReason ?? "—")</span></td>
+                                            <td style="color:var(--muted-foreground);max-width:200px;">@(string.IsNullOrWhiteSpace(h.ArchiveNote) ? "—" : h.ArchiveNote)</td>
+                                            <td style="color:var(--muted-foreground);white-space:nowrap;">
+                                                @(h.ArchivedAt is { } a ? a.LocalDateTime.ToString("dd MMM yyyy") : "—")
+                                                @if (!string.IsNullOrWhiteSpace(h.ArchivedByName)) { <text><br />&middot; @h.ArchivedByName</text> }
+                                            </td>
+                                            <td style="white-space:nowrap;">
+                                                <button class="btn btn-outline-secondary btn-sm" @onclick="() => RestoreFromHistoryAsync(h)" disabled="@_busy" title="Quitar del historial y regresar al tablero">
+                                                    Regresar al tablero
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
                 }
             </div>
             <div class="modal-foot">
@@ -1028,6 +1146,10 @@ else
     private string? _archiveError;
     private bool _historyOpen;
     private List<ArchivedLeadDto> _history = new();
+    private string _histSearch = string.Empty;
+    private string _histReason = string.Empty;
+    private string _histAsesor = string.Empty;
+    private string _boardView = "kanban";
     private static readonly string[] ArchiveReasons =
     {
         "No interesado / no compro",
@@ -1482,7 +1604,82 @@ else
     private async Task OpenHistoryAsync()
     {
         _history = (await LeadsSvc.ListArchivedAsync()).ToList();
+        _histSearch = string.Empty;
+        _histReason = string.Empty;
+        _histAsesor = string.Empty;
         _historyOpen = true;
+    }
+
+    private IEnumerable<ArchivedLeadDto> FilteredHistory()
+    {
+        IEnumerable<ArchivedLeadDto> q = _history;
+        if (!string.IsNullOrWhiteSpace(_histSearch))
+        {
+            var s = _histSearch.Trim();
+            q = q.Where(h => (h.ContactName?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                          || (h.Destination?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                          || (h.ContactPhone?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+        if (!string.IsNullOrWhiteSpace(_histReason))
+        {
+            q = q.Where(h => h.ArchiveReason == _histReason);
+        }
+        if (Guid.TryParse(_histAsesor, out var aid))
+        {
+            q = q.Where(h => h.AssignedToTenantUserId == aid);
+        }
+        return q;
+    }
+
+    private string ArchAsesor(ArchivedLeadDto h)
+    {
+        if (h.FieldValues.TryGetValue("asesor", out var f) && !string.IsNullOrWhiteSpace(f)) { return f!; }
+        return h.AssignedToTenantUserId is Guid id ? UserEmail(id) : "Sin asesor";
+    }
+
+    private string FieldLabel(string key) => _fields.FirstOrDefault(f => f.FieldKey == key)?.Label ?? key;
+
+    private string HistDatos(ArchivedLeadDto h)
+    {
+        var parts = h.FieldValues
+            .Where(kv => kv.Key != "asesor" && !string.IsNullOrWhiteSpace(kv.Value))
+            .Select(kv => $"{FieldLabel(kv.Key)}: {kv.Value}")
+            .ToList();
+        return parts.Count == 0 ? "—" : string.Join(" · ", parts);
+    }
+
+    private async Task RestoreFromHistoryAsync(ArchivedLeadDto h)
+    {
+        _busy = true;
+        try
+        {
+            var restored = await LeadsSvc.UnarchiveAsync(h.Id, await ActorAsync());
+            if (restored is not null)
+            {
+                _history.RemoveAll(x => x.Id == h.Id);
+                _leads.RemoveAll(l => l.Id == restored.Id);
+                _leads.Add(restored);
+                RecalcKpis();
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    // Leads filtrados y ordenados de forma global (vista lista, sin agrupar por etapa).
+    private List<LeadDto> AllFilteredLeads()
+    {
+        var all = new List<LeadDto>();
+        foreach (var stage in _stages)
+        {
+            if (_filterStages.Count > 0 && !_filterStages.Contains(stage.Id)) { continue; }
+            all.AddRange(VisibleLeads(stage.Id));
+        }
+        return _sortBy switch
+        {
+            "name" => all.OrderBy(l => l.ContactName, StringComparer.OrdinalIgnoreCase).ToList(),
+            "unanswered" => all.OrderByDescending(l => PendingFor(l)?.UnansweredCount ?? 0).ThenBy(l => l.StageChangedAt).ToList(),
+            _ => all.OrderBy(l => l.StageChangedAt).ToList()
+        };
     }
 
     // ===== Detalle de lead =====
