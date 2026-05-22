@@ -4,4 +4,7 @@ namespace CubotTravels.Application.Tenancy;
 public interface IDashboardService
 {
     Task<TenantDashboardDto> GetAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Reportes comerciales del modulo de Metricas (embudo, asesores, ventas, motivos, destinos, WhatsApp).</summary>
+    Task<TenantReportsDto> GetReportsAsync(CancellationToken cancellationToken = default);
 }
