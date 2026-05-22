@@ -267,6 +267,45 @@ public sealed class LeadService : ILeadService
         return Map(lead);
     }
 
+    public async Task<IReadOnlyList<LeadNoteDto>> ListNotesAsync(Guid leadId, CancellationToken cancellationToken = default)
+    {
+        return await _db.LeadNotes.AsNoTracking()
+            .Where(n => n.LeadId == leadId)
+            .OrderByDescending(n => n.CreatedAt)
+            .Select(n => new LeadNoteDto(n.Id, n.Content, n.Color, n.CreatedAt,
+                _db.PlatformUsers.Where(p => p.Id == n.CreatedBy).Select(p => p.DisplayName ?? p.Email).FirstOrDefault()))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<LeadNoteDto?> AddNoteAsync(Guid leadId, string content, string color, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(content)) { return null; }
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, cancellationToken);
+        if (lead is null) { return null; }
+
+        var note = new LeadNote
+        {
+            TenantId = lead.TenantId,
+            LeadId = leadId,
+            Content = content.Trim(),
+            Color = string.IsNullOrWhiteSpace(color) ? "yellow" : color.Trim()
+        };
+        _db.LeadNotes.Add(note);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var actorName = await ResolveActorNameAsync(actorUserId, lead.TenantId, cancellationToken);
+        return new LeadNoteDto(note.Id, note.Content, note.Color, note.CreatedAt, actorName);
+    }
+
+    public async Task<bool> DeleteNoteAsync(Guid noteId, CancellationToken cancellationToken = default)
+    {
+        var note = await _db.LeadNotes.FirstOrDefaultAsync(n => n.Id == noteId, cancellationToken);
+        if (note is null) { return false; }
+        _db.LeadNotes.Remove(note);
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private async Task<string?> ResolveActorNameAsync(Guid actorUserId, Guid tenantId, CancellationToken ct)
     {
         if (actorUserId == Guid.Empty) { return null; }

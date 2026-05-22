@@ -19,6 +19,7 @@ public interface IApplicationDbContext
     DbSet<PipelineFieldDefinition> PipelineFieldDefinitions { get; }
     DbSet<Lead> Leads { get; }
     DbSet<LeadActivity> LeadActivities { get; }
+    DbSet<LeadNote> LeadNotes { get; }
     DbSet<FollowUpTask> FollowUpTasks { get; }
     DbSet<Conversation> Conversations { get; }
     DbSet<Message> Messages { get; }

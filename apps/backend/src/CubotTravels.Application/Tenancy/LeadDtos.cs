@@ -17,6 +17,8 @@ public sealed record LeadDto(
 
 public sealed record LeadActivityDto(Guid Id, string ActivityType, string? Description, DateTimeOffset CreatedAt, string? ActorName);
 
+public sealed record LeadNoteDto(Guid Id, string Content, string Color, DateTimeOffset CreatedAt, string? ActorName);
+
 public sealed record LeadDetailDto(LeadDto Lead, IReadOnlyList<LeadActivityDto> Activities);
 
 public sealed record ArchivedLeadDto(

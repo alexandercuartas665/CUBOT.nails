@@ -25,4 +25,13 @@ public interface ILeadService
 
     /// <summary>Lista los leads en historial (archivados), respetando la visibilidad por rol del asesor.</summary>
     Task<IReadOnlyList<ArchivedLeadDto>> ListArchivedAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Notas de seguimiento del lead (mas recientes primero).</summary>
+    Task<IReadOnlyList<LeadNoteDto>> ListNotesAsync(Guid leadId, CancellationToken cancellationToken = default);
+
+    /// <summary>Agrega una nota de seguimiento con color. Null si el lead no existe o el contenido esta vacio.</summary>
+    Task<LeadNoteDto?> AddNoteAsync(Guid leadId, string content, string color, Guid actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Elimina una nota de seguimiento. False si no existe.</summary>
+    Task<bool> DeleteNoteAsync(Guid noteId, CancellationToken cancellationToken = default);
 }

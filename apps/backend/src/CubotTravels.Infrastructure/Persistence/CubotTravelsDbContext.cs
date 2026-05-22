@@ -43,6 +43,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
     public DbSet<PipelineFieldDefinition> PipelineFieldDefinitions => Set<PipelineFieldDefinition>();
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadActivity> LeadActivities => Set<LeadActivity>();
+    public DbSet<LeadNote> LeadNotes => Set<LeadNote>();
     public DbSet<FollowUpTask> FollowUpTasks => Set<FollowUpTask>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
@@ -259,6 +260,14 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
         {
             b.Property(x => x.ActivityType).HasMaxLength(80).IsRequired();
             b.Property(x => x.Description).HasMaxLength(1000);
+            b.HasOne(x => x.Lead).WithMany().HasForeignKey(x => x.LeadId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.LeadId });
+        });
+
+        modelBuilder.Entity<LeadNote>(b =>
+        {
+            b.Property(x => x.Content).HasMaxLength(2000).IsRequired();
+            b.Property(x => x.Color).HasMaxLength(20).IsRequired();
             b.HasOne(x => x.Lead).WithMany().HasForeignKey(x => x.LeadId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.LeadId });
         });

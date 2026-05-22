@@ -418,6 +418,7 @@ else
             <div class="modal-body">
                 <div class="pl-lead-tabs">
                     <button class="pl-lead-tab @(_leadTab == "datos" ? "active" : "")" @onclick='() => _leadTab = "datos"'>Datos</button>
+                    <button class="pl-lead-tab @(_leadTab == "notas" ? "active" : "")" @onclick='() => _leadTab = "notas"'>Notas @(_notes.Count > 0 ? $"({_notes.Count})" : "")</button>
                     <button class="pl-lead-tab @(_leadTab == "actividad" ? "active" : "")" @onclick='() => _leadTab = "actividad"'>Actividad @(_activities.Count > 0 ? $"({_activities.Count})" : "")</button>
                 </div>
 
@@ -523,6 +524,44 @@ else
                     </div>
                 }
 
+                }
+
+                @if (_leadTab == "notas")
+                {
+                    <div class="pl-notes-composer">
+                        <textarea class="form-control" rows="2" placeholder="Escribe una observacion sobre el cliente..." @bind="_noteText" @bind:event="oninput"></textarea>
+                        <div class="pl-notes-bar">
+                            <div class="pl-notes-colors">
+                                @foreach (var c in NoteColors)
+                                {
+                                    <button type="button" class="pl-note-swatch @(c == _noteColor ? "on" : "")"
+                                            style="background:@NoteColorHex(c);" title="@c" @onclick="() => _noteColor = c"></button>
+                                }
+                            </div>
+                            <button class="btn btn-primary btn-sm" @onclick="AddNoteAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_noteText))">Agregar nota</button>
+                        </div>
+                    </div>
+
+                    @if (_notes.Count == 0)
+                    {
+                        <div class="text-muted" style="font-size:13px;padding:14px 2px;">Aun no hay notas de seguimiento para este lead.</div>
+                    }
+                    else
+                    {
+                        <div class="pl-notes-list">
+                            @foreach (var n in _notes)
+                            {
+                                <div class="pl-note" style="background:@NoteColorHex(n.Color);border-color:@NoteColorBorder(n.Color);">
+                                    <button class="pl-note-del" title="Eliminar nota" @onclick="() => DeleteNoteAsync(n.Id)">&times;</button>
+                                    <div class="pl-note-text">@n.Content</div>
+                                    <div class="pl-note-meta">
+                                        <span>@(string.IsNullOrWhiteSpace(n.ActorName) ? "Sistema" : n.ActorName)</span>
+                                        &middot; @n.CreatedAt.LocalDateTime.ToString("dd MMM yyyy HH:mm")
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
                 }
 
                 @if (_leadTab == "actividad")
@@ -1137,7 +1176,11 @@ else
     private EditLeadForm _el = new();
     private Dictionary<string, string?> _editValues = new();
     private List<LeadActivityDto> _activities = new();
+    private List<LeadNoteDto> _notes = new();
+    private string _noteText = string.Empty;
+    private string _noteColor = "yellow";
     private string _leadTab = "datos";
+    private static readonly string[] NoteColors = { "yellow", "green", "blue", "pink", "purple", "gray" };
 
     // Historial / archivar
     private LeadDto? _archiveLead;
@@ -1665,6 +1708,51 @@ else
         finally { _busy = false; }
     }
 
+    // ===== Notas de seguimiento =====
+    private async Task AddNoteAsync()
+    {
+        if (_editLead is null || string.IsNullOrWhiteSpace(_noteText)) { return; }
+        _busy = true;
+        try
+        {
+            var note = await LeadsSvc.AddNoteAsync(_editLead.Id, _noteText, _noteColor, await ActorAsync());
+            if (note is not null)
+            {
+                _notes.Insert(0, note);
+                _noteText = string.Empty;
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteNoteAsync(Guid noteId)
+    {
+        if (await LeadsSvc.DeleteNoteAsync(noteId))
+        {
+            _notes.RemoveAll(n => n.Id == noteId);
+        }
+    }
+
+    private static string NoteColorHex(string color) => color switch
+    {
+        "green" => "#e7f6ec",
+        "blue" => "#e6f0fb",
+        "pink" => "#fce8f0",
+        "purple" => "#f0e9fb",
+        "gray" => "#eef0f2",
+        _ => "#fdf6d8"
+    };
+
+    private static string NoteColorBorder(string color) => color switch
+    {
+        "green" => "#bfe3c9",
+        "blue" => "#bcd6f2",
+        "pink" => "#f3c4d8",
+        "purple" => "#d8c5f0",
+        "gray" => "#d6dbe0",
+        _ => "#ecdfa0"
+    };
+
     // Leads filtrados y ordenados de forma global (vista lista, sin agrupar por etapa).
     private List<LeadDto> AllFilteredLeads()
     {
@@ -1692,6 +1780,9 @@ else
         _editStageId = detail.Lead.StageId;
         _leadTab = "datos";
         _activities = detail.Activities.OrderByDescending(a => a.CreatedAt).ToList();
+        _notes = (await LeadsSvc.ListNotesAsync(leadId)).ToList();
+        _noteText = string.Empty;
+        _noteColor = "yellow";
         _el = new EditLeadForm
         {
             ContactName = detail.Lead.ContactName,
