@@ -2,8 +2,10 @@
 @attribute [Authorize]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using CubotTravels.Application.Tenancy
+@using CubotTravels.Application.Admin
 @using CubotTravels.Domain.Enums
 @inject IAiAgentService AgentsSvc
+@inject IAiServerConfigService AiServersSvc
 @inject IWebHostEnvironment Env
 
 <PageTitle>Agentes IA - CUBOT.travels</PageTitle>
@@ -17,7 +19,7 @@
             <span>Infraestructura & IA</span>
         </div>
         <h1 class="page-title" style="margin-top:12px;">Agentes <span>IA</span></h1>
-        <p class="page-sub" style="margin-bottom:0;">Configura cada agente: proveedor (Claude, Gemini o ChatGPT), prompt, recursos y ponlo en produccion o apagalo.</p>
+        <p class="page-sub" style="margin-bottom:0;">Configura cada agente: elige el servicio de IA disponible, define su comportamiento, agrega recursos y ponlo en produccion o apagalo.</p>
     </div>
     <button class="btn btn-primary" @onclick="OpenNew">+ Nuevo agente</button>
 </div>
@@ -83,13 +85,20 @@ else
                         <input class="form-control" @bind="_fRole" placeholder="Copiloto, clasificador, seguimiento..." autocomplete="off" />
                     </div>
                 </div>
+                @if (_providerOptions.Count == 0)
+                {
+                    <div class="text-danger small" style="margin:4px 0 10px;">
+                        No hay servicios de IA disponibles. Pide al administrador de la plataforma que habilite un proveedor en "Servidores de IA".
+                    </div>
+                }
                 <div class="field-row">
                     <div class="field">
-                        <label class="form-label">Proveedor</label>
-                        <select class="form-control" @bind="_fProvider">
-                            <option value="@AiProvider.Claude">Claude</option>
-                            <option value="@AiProvider.Gemini">Gemini</option>
-                            <option value="@AiProvider.ChatGpt">ChatGPT</option>
+                        <label class="form-label">Servicio de IA *</label>
+                        <select class="form-control" @bind="_fProvider" disabled="@(_providerOptions.Count == 0)">
+                            @foreach (var opt in EditorProviderOptions())
+                            {
+                                <option value="@opt.Provider">@opt.DisplayName</option>
+                            }
                         </select>
                     </div>
                     <div class="field">
@@ -97,16 +106,19 @@ else
                         <input class="form-control" @bind="_fModel" placeholder="@ModelHint(_fProvider)" autocomplete="off" />
                     </div>
                 </div>
-                <div class="field">
-                    <label class="form-label">Prompt del sistema</label>
-                    <textarea class="form-control" rows="5" @bind="_fPrompt" placeholder="Instrucciones que definen el comportamiento del agente..."></textarea>
-                </div>
+                @if (_editId is not null)
+                {
+                    <div class="field">
+                        <label class="form-label">Prompt del sistema</label>
+                        <textarea class="form-control" rows="5" @bind="_fPrompt" placeholder="Instrucciones que definen el comportamiento del agente..."></textarea>
+                    </div>
+                }
                 @if (_editorError is not null)
                 {
                     <div class="text-danger small">@_editorError</div>
                 }
                 <div style="display:flex;gap:8px;align-items:center;margin:4px 0 8px;">
-                    <button class="btn btn-primary" @onclick="SaveAgentAsync" disabled="@_busy">@(_editId is null ? "Crear agente" : "Guardar cambios")</button>
+                    <button class="btn btn-primary" @onclick="SaveAgentAsync" disabled="@(_busy || (_editId is null && _providerOptions.Count == 0))">@(_editId is null ? "Crear agente" : "Guardar cambios")</button>
                     @if (_editId is not null)
                     {
                         <label class="ag-switch">
@@ -190,6 +202,7 @@ else
     private bool _loading = true;
     private bool _busy;
     private List<AiAgentDto> _agents = new();
+    private List<AiProviderOptionDto> _providerOptions = new();
 
     private bool _editorOpen;
     private Guid? _editId;
@@ -204,8 +217,21 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        _providerOptions = (await AiServersSvc.ListEnabledAsync()).ToList();
         await ReloadAsync();
         _loading = false;
+    }
+
+    // Opciones del selector: los proveedores habilitados; en edicion se incluye el actual aunque
+    // ya no este habilitado, para no perder la seleccion guardada.
+    private List<AiProviderOptionDto> EditorProviderOptions()
+    {
+        var opts = _providerOptions.ToList();
+        if (_editId is not null && opts.All(o => o.Provider != _fProvider))
+        {
+            opts.Insert(0, new AiProviderOptionDto(_fProvider, ProviderLabel(_fProvider), ModelHint(_fProvider)));
+        }
+        return opts;
     }
 
     private async Task ReloadAsync()
@@ -219,7 +245,7 @@ else
         _editorError = null;
         _fName = "";
         _fRole = null;
-        _fProvider = AiProvider.Claude;
+        _fProvider = _providerOptions.Count > 0 ? _providerOptions[0].Provider : AiProvider.Claude;
         _fModel = null;
         _fPrompt = "";
         _fActive = false;

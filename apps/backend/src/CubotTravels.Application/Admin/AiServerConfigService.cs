@@ -59,6 +59,20 @@ public sealed class AiServerConfigService : IAiServerConfigService
         return Map(config.Provider, config);
     }
 
+    public async Task<IReadOnlyList<AiProviderOptionDto>> ListEnabledAsync(CancellationToken cancellationToken = default)
+    {
+        var enabled = await _db.AiProviderConfigs.AsNoTracking()
+            .Where(c => c.IsEnabled && c.ApiKeyEncrypted != null)
+            .Select(c => c.Provider)
+            .ToListAsync(cancellationToken);
+
+        return enabled.Select(p =>
+        {
+            var meta = AiProviderCatalog.For(p);
+            return new AiProviderOptionDto(p, meta.DisplayName, meta.DefaultModel);
+        }).ToList();
+    }
+
     private AiProviderDto Map(AiProvider provider, AiProviderConfig? c)
     {
         var meta = AiProviderCatalog.For(provider);

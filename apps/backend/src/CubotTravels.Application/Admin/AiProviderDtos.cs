@@ -20,6 +20,9 @@ public sealed record SaveAiProviderRequest(
     string? BaseUrl,
     bool IsEnabled);
 
+/// <summary>Proveedor disponible para que una agencia lo use en sus agentes (sin datos sensibles).</summary>
+public sealed record AiProviderOptionDto(AiProvider Provider, string DisplayName, string DefaultModel);
+
 /// <summary>
 /// Cuentas maestras de IA de la plataforma (Super Admin). Un registro por proveedor; la API key
 /// se cifra y nunca se devuelve en claro. Las agencias usan los proveedores habilitados en sus agentes.
@@ -28,6 +31,9 @@ public interface IAiServerConfigService
 {
     Task<IReadOnlyList<AiProviderDto>> ListAsync(CancellationToken cancellationToken = default);
     Task<AiProviderDto> SaveAsync(SaveAiProviderRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Proveedores habilitados (con API key) que las agencias pueden elegir en sus agentes.</summary>
+    Task<IReadOnlyList<AiProviderOptionDto>> ListEnabledAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Metadata estatica de cada proveedor (nombre visible, modelo por defecto, modelos sugeridos).</summary>
