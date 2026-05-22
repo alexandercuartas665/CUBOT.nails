@@ -38,7 +38,12 @@ public sealed class AiAgentService : IAiAgentService
             .OrderBy(r => r.SortOrder)
             .Select(r => MapResource(r))
             .ToListAsync(cancellationToken);
-        return new AiAgentDetailDto(Map(agent, resources.Count), resources);
+        var prompts = await _db.AiAgentPrompts.AsNoTracking()
+            .Where(p => p.AgentId == id)
+            .OrderBy(p => p.SortOrder)
+            .Select(p => MapPrompt(p))
+            .ToListAsync(cancellationToken);
+        return new AiAgentDetailDto(Map(agent, resources.Count), resources, prompts);
     }
 
     public async Task<AiAgentDto?> CreateAsync(CreateAiAgentRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -144,9 +149,52 @@ public sealed class AiAgentService : IAiAgentService
         return true;
     }
 
+    public async Task<AiAgentPromptDto?> AddPromptAsync(CreateAgentPromptRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (_tenantContext.TenantId is not Guid tenantId) { return null; }
+        var agent = await _db.AiAgents.FirstOrDefaultAsync(a => a.Id == request.AgentId, cancellationToken);
+        if (agent is null) { return null; }
+        var nextOrder = (await _db.AiAgentPrompts.Where(p => p.AgentId == request.AgentId).Select(p => (int?)p.SortOrder).MaxAsync(cancellationToken) ?? -1) + 1;
+        var prompt = new AiAgentPrompt
+        {
+            TenantId = tenantId,
+            AgentId = request.AgentId,
+            Name = (request.Name ?? "Prompt").Trim(),
+            Rule = string.IsNullOrWhiteSpace(request.Rule) ? null : request.Rule.Trim(),
+            Body = request.Body ?? "",
+            SortOrder = nextOrder
+        };
+        _db.AiAgentPrompts.Add(prompt);
+        await _db.SaveChangesAsync(cancellationToken);
+        return MapPrompt(prompt);
+    }
+
+    public async Task<AiAgentPromptDto?> UpdatePromptAsync(Guid id, UpdateAgentPromptRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var prompt = await _db.AiAgentPrompts.FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        if (prompt is null) { return null; }
+        prompt.Name = (request.Name ?? prompt.Name).Trim();
+        prompt.Rule = string.IsNullOrWhiteSpace(request.Rule) ? null : request.Rule.Trim();
+        prompt.Body = request.Body ?? "";
+        await _db.SaveChangesAsync(cancellationToken);
+        return MapPrompt(prompt);
+    }
+
+    public async Task<bool> DeletePromptAsync(Guid id, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var prompt = await _db.AiAgentPrompts.FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        if (prompt is null) { return false; }
+        _db.AiAgentPrompts.Remove(prompt);
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static AiAgentDto Map(AiAgent a, int resourceCount) =>
         new(a.Id, a.Name, a.Role, a.Provider, a.Model, a.SystemPrompt, a.IsActive, a.SortOrder, resourceCount);
 
     private static AiAgentResourceDto MapResource(AiAgentResource r) =>
         new(r.Id, r.AgentId, r.Name, r.ResourceType, r.Detail, r.FileUrl, r.FileName, r.SortOrder);
+
+    private static AiAgentPromptDto MapPrompt(AiAgentPrompt p) =>
+        new(p.Id, p.AgentId, p.Name, p.Rule, p.Body, p.SortOrder);
 }

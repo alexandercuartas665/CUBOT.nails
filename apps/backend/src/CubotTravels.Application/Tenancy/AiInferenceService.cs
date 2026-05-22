@@ -42,18 +42,19 @@ public sealed class AiInferenceService : IAiInferenceService
             : !string.IsNullOrWhiteSpace(providerCfg.Model) ? providerCfg.Model!
             : meta.DefaultModel;
 
-        var systemPrompt = BuildSystemPrompt(agentId, systemPromptOverride ?? agent.SystemPrompt, cancellationToken);
-
         if (turns.Count == 0) { return new AiChatResult(false, null, "Escribe un mensaje para probar el agente."); }
 
         // Control de cupo: si el plan tiene limite duro y ya se agoto el mes, no se ejecuta.
+        // (Las consultas a BD se hacen en serie sobre el DbContext scoped: cupo -> prompt -> proveedor.)
         var quota = await _usage.GetQuotaAsync(cancellationToken);
         if (quota.Exceeded && quota.Hard)
         {
             return new AiChatResult(false, null, $"Alcanzaste el limite de tokens de IA de tu plan este mes ({quota.MonthlyLimitTokens:N0}). Actualiza tu plan para seguir usando los agentes.");
         }
 
-        var result = await _client.CompleteAsync(agent.Provider, apiKey, providerCfg.BaseUrl, model, await systemPrompt, turns, cancellationToken);
+        var systemPrompt = await BuildSystemPrompt(agentId, systemPromptOverride ?? agent.SystemPrompt, cancellationToken);
+
+        var result = await _client.CompleteAsync(agent.Provider, apiKey, providerCfg.BaseUrl, model, systemPrompt, turns, cancellationToken);
 
         // Todo consumo de IA del tenant pasa por el modulo de tokens (incluido el chat de prueba).
         if (result.Ok)
@@ -64,25 +65,48 @@ public sealed class AiInferenceService : IAiInferenceService
         return result;
     }
 
-    // Anexa al prompt los recursos de texto del agente como contexto utilizable.
+    // Arma el prompt del sistema: prompt base + enrutador de prompts (nombre + regla + cuerpo) + recursos de texto.
     private async Task<string> BuildSystemPrompt(Guid agentId, string basePrompt, CancellationToken ct)
     {
+        var sb = new StringBuilder(basePrompt);
+
+        // Enrutador: prompts con nombre + regla. El modelo elige el que aplique segun el mensaje del cliente.
+        var prompts = await _db.AiAgentPrompts.AsNoTracking()
+            .Where(p => p.AgentId == agentId)
+            .OrderBy(p => p.SortOrder)
+            .Select(p => new { p.Name, p.Rule, p.Body })
+            .ToListAsync(ct);
+        if (prompts.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.AppendLine("Enrutador de prompts: evalua el mensaje del cliente y, si coincide alguna de estas reglas, sigue PRIMERO las instrucciones del prompt correspondiente (ademas del comportamiento base). Si ninguna aplica, responde con el comportamiento base.");
+            foreach (var p in prompts)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"### Prompt \"{p.Name}\"");
+                sb.AppendLine($"Regla (cuando usarlo): {(string.IsNullOrWhiteSpace(p.Rule) ? "(sin regla; usar a criterio)" : p.Rule)}");
+                sb.AppendLine($"Instrucciones: {p.Body}");
+            }
+        }
+
+        // Recursos de texto como contexto utilizable.
         var resources = await _db.AiAgentResources.AsNoTracking()
             .Where(r => r.AgentId == agentId && r.ResourceType == AgentResourceType.Text && r.Detail != null)
             .OrderBy(r => r.SortOrder)
             .Select(r => new { r.Name, r.Detail })
             .ToListAsync(ct);
-
-        if (resources.Count == 0) { return basePrompt; }
-
-        var sb = new StringBuilder(basePrompt);
-        sb.AppendLine();
-        sb.AppendLine();
-        sb.AppendLine("Recursos disponibles para responder:");
-        foreach (var r in resources)
+        if (resources.Count > 0)
         {
-            sb.AppendLine($"- {r.Name}: {r.Detail}");
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.AppendLine("Recursos disponibles para responder:");
+            foreach (var r in resources)
+            {
+                sb.AppendLine($"- {r.Name}: {r.Detail}");
+            }
         }
+
         return sb.ToString();
     }
 }

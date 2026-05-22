@@ -151,8 +151,8 @@ else
                 @if (_editId is not null)
                 {
                     <div class="field">
-                        <label class="form-label">Prompt del sistema</label>
-                        <textarea class="form-control" rows="5" @bind="_fPrompt" placeholder="Instrucciones que definen el comportamiento del agente..."></textarea>
+                        <label class="form-label">Prompt base (comportamiento principal)</label>
+                        <textarea class="form-control" rows="4" @bind="_fPrompt" placeholder="Instrucciones generales que definen el comportamiento del agente..."></textarea>
                     </div>
                 }
                 @if (_editorError is not null)
@@ -173,61 +173,61 @@ else
 
                 @if (_editId is not null)
                 {
+                    @* ===== Prompts enrutados ===== *@
+                    <hr style="border-color:var(--border);margin:14px 0;" />
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                        <div class="pl-stagegroup-title">Prompts enrutados</div>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenPrompt(null)" disabled="@_busy">+ Agregar prompt</button>
+                    </div>
+                    <div class="text-muted" style="font-size:12px;margin-bottom:10px;">El enrutador evalua el mensaje del cliente y aplica el prompt cuya regla coincide (ej. "cuando pregunte por Panama") antes del comportamiento base.</div>
+                    @if (_prompts.Count == 0)
+                    {
+                        <div class="text-muted small">Sin prompts enrutados. El agente usara solo el prompt base.</div>
+                    }
+                    else
+                    {
+                        <div class="ag-list">
+                            @foreach (var p in _prompts)
+                            {
+                                <div class="ag-item">
+                                    <div class="ag-item-main">
+                                        <div class="ag-item-name">@p.Name</div>
+                                        <div class="ag-item-sub">@(string.IsNullOrWhiteSpace(p.Rule) ? "Sin regla" : p.Rule)</div>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenPrompt(p)" disabled="@_busy">Editar</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePromptAsync(p.Id)" disabled="@_busy">&times;</button>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @* ===== Recursos ===== *@
                     <hr style="border-color:var(--border);margin:14px 0;" />
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
                         <div class="pl-stagegroup-title">Recursos del agente</div>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="AddResourceAsync" disabled="@_busy">+ Agregar recurso</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenResource(null)" disabled="@_busy">+ Agregar recurso</button>
                     </div>
                     <div class="text-muted" style="font-size:12px;margin-bottom:10px;">Archivos y datos que el agente puede usar para responder a los clientes.</div>
-
                     @if (_resources.Count == 0)
                     {
                         <div class="text-muted small">Sin recursos. Agrega imagenes, videos, audios, PDF, ubicaciones o textos.</div>
                     }
                     else
                     {
-                        <table class="ag-res-table">
-                            <thead>
-                                <tr><th style="width:20%;">Nombre</th><th style="width:16%;">Tipo</th><th>Detalle</th><th style="width:24%;">Archivo</th><th></th></tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var r in _resources)
-                                {
-                                    <tr>
-                                        <td><input class="form-control form-control-sm" value="@r.Name" @onchange="@(e => UpdateResourceAsync(r, name: e.Value?.ToString()))" /></td>
-                                        <td>
-                                            <select class="form-control form-control-sm" value="@r.ResourceType" @onchange="@(e => UpdateResourceAsync(r, type: Enum.Parse<AgentResourceType>(e.Value!.ToString()!)))">
-                                                <option value="@AgentResourceType.Image">imagen</option>
-                                                <option value="@AgentResourceType.Video">video</option>
-                                                <option value="@AgentResourceType.Audio">audio</option>
-                                                <option value="@AgentResourceType.Pdf">pdf</option>
-                                                <option value="@AgentResourceType.Location">ubicacion</option>
-                                                <option value="@AgentResourceType.Text">texto</option>
-                                            </select>
-                                        </td>
-                                        <td><textarea class="form-control form-control-sm" rows="2" value="@r.Detail" @onchange="@(e => UpdateResourceAsync(r, detail: e.Value?.ToString()))" placeholder="@DetailHint(r.ResourceType)"></textarea></td>
-                                        <td>
-                                            @if (r.ResourceType is AgentResourceType.Text or AgentResourceType.Location)
-                                            {
-                                                <span class="text-muted small">No requiere archivo</span>
-                                            }
-                                            else if (!string.IsNullOrWhiteSpace(r.FileUrl))
-                                            {
-                                                <div class="ag-file">
-                                                    <a href="@r.FileUrl" target="_blank">@(r.FileName ?? "ver archivo")</a>
-                                                    <InputFile OnChange="@(e => OnResourceFileAsync(e, r))" class="ag-fileinput" />
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <InputFile OnChange="@(e => OnResourceFileAsync(e, r))" class="ag-fileinput" />
-                                            }
-                                        </td>
-                                        <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteResourceAsync(r.Id)" disabled="@_busy">&times;</button></td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+                        <div class="ag-list">
+                            @foreach (var r in _resources)
+                            {
+                                <div class="ag-item">
+                                    <span class="ag-rtype">@ResourceLabel(r.ResourceType)</span>
+                                    <div class="ag-item-main">
+                                        <div class="ag-item-name">@r.Name</div>
+                                        <div class="ag-item-sub">@(string.IsNullOrWhiteSpace(r.Detail) ? (r.FileName ?? "Sin detalle") : Trim(r.Detail!, 70))</div>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenResource(r)" disabled="@_busy">Editar</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteResourceAsync(r.Id)" disabled="@_busy">&times;</button>
+                                </div>
+                            }
+                        </div>
                     }
                 }
                </div>@* /ag-editor-left *@
@@ -281,6 +281,98 @@ else
     </div>
 }
 
+@* ===== Modal: prompt enrutado ===== *@
+@if (_promptModalOpen)
+{
+    <div class="modal-overlay" style="z-index:1200;">
+        <div class="modal-dialog" style="max-width:520px;">
+            <div class="modal-head">
+                <h3>@(_promptEditId is null ? "Nuevo prompt" : "Editar prompt")</h3>
+                <button class="modal-close" @onclick="() => _promptModalOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="field">
+                    <label class="form-label">Nombre *</label>
+                    <input class="form-control" @bind="_pName" placeholder="Ej. Cotizacion Panama" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label class="form-label">Regla (cuando usarlo)</label>
+                    <input class="form-control" @bind="_pRule" placeholder="Ej. cuando el cliente pregunte por el destino Panama" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label class="form-label">Prompt *</label>
+                    <textarea class="form-control" rows="6" @bind="_pBody" placeholder="Instrucciones que el agente debe seguir cuando aplica esta regla..."></textarea>
+                </div>
+                @if (_promptError is not null)
+                {
+                    <div class="text-danger small">@_promptError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="() => _promptModalOpen = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SavePromptAsync" disabled="@_busy">@(_promptEditId is null ? "Agregar" : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: recurso ===== *@
+@if (_resModalOpen)
+{
+    <div class="modal-overlay" style="z-index:1200;">
+        <div class="modal-dialog" style="max-width:520px;">
+            <div class="modal-head">
+                <h3>@(_resEditId is null ? "Nuevo recurso" : "Editar recurso")</h3>
+                <button class="modal-close" @onclick="() => _resModalOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="field-row">
+                    <div class="field">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-control" @bind="_rName" placeholder="Ej. Brochure Cartagena" autocomplete="off" />
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Tipo</label>
+                        <select class="form-control" @bind="_rType">
+                            <option value="@AgentResourceType.Text">Texto</option>
+                            <option value="@AgentResourceType.Image">Imagen</option>
+                            <option value="@AgentResourceType.Video">Video</option>
+                            <option value="@AgentResourceType.Audio">Audio</option>
+                            <option value="@AgentResourceType.Pdf">PDF</option>
+                            <option value="@AgentResourceType.Location">Ubicacion</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="form-label">Detalle</label>
+                    <textarea class="form-control" rows="3" @bind="_rDetail" placeholder="@DetailHint(_rType)"></textarea>
+                </div>
+                @if (_rType is not (AgentResourceType.Text or AgentResourceType.Location))
+                {
+                    <div class="field">
+                        <label class="form-label">Archivo</label>
+                        @if (!string.IsNullOrWhiteSpace(_rFileUrl))
+                        {
+                            <div class="ag-file" style="margin-bottom:6px;">
+                                <a href="@_rFileUrl" target="_blank">@(_rFileName ?? "ver archivo")</a>
+                            </div>
+                        }
+                        <InputFile OnChange="OnResourceModalFileAsync" />
+                    </div>
+                }
+                @if (_resError is not null)
+                {
+                    <div class="text-danger small">@_resError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="() => _resModalOpen = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveResourceAsync" disabled="@_busy">@(_resEditId is null ? "Agregar" : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
@@ -301,6 +393,25 @@ else
     private string _fPrompt = "";
     private bool _fActive;
     private List<AiAgentResourceDto> _resources = new();
+    private List<AiAgentPromptDto> _prompts = new();
+
+    // Modal de prompt enrutado
+    private bool _promptModalOpen;
+    private Guid? _promptEditId;
+    private string _pName = "";
+    private string? _pRule;
+    private string _pBody = "";
+    private string? _promptError;
+
+    // Modal de recurso
+    private bool _resModalOpen;
+    private Guid? _resEditId;
+    private string _rName = "";
+    private AgentResourceType _rType = AgentResourceType.Text;
+    private string? _rDetail;
+    private string? _rFileUrl;
+    private string? _rFileName;
+    private string? _resError;
 
     // Chat de prueba del agente
     private readonly List<AiChatTurn> _testTurns = new();
@@ -383,9 +494,120 @@ else
         _fPrompt = detail.Agent.SystemPrompt;
         _fActive = detail.Agent.IsActive;
         _resources = detail.Resources.ToList();
+        _prompts = detail.Prompts.ToList();
         ResetTest();
         _editorOpen = true;
     }
+
+    // ===== Prompts enrutados =====
+    private void OpenPrompt(AiAgentPromptDto? p)
+    {
+        _promptError = null;
+        _promptEditId = p?.Id;
+        _pName = p?.Name ?? "";
+        _pRule = p?.Rule;
+        _pBody = p?.Body ?? "";
+        _promptModalOpen = true;
+    }
+
+    private async Task SavePromptAsync()
+    {
+        _promptError = null;
+        if (_editId is null) { return; }
+        if (string.IsNullOrWhiteSpace(_pName) || string.IsNullOrWhiteSpace(_pBody)) { _promptError = "Nombre y prompt son obligatorios."; return; }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            if (_promptEditId is null)
+            {
+                var created = await AgentsSvc.AddPromptAsync(new CreateAgentPromptRequest(_editId.Value, _pName, _pRule, _pBody), actor);
+                if (created is not null) { _prompts.Add(created); }
+            }
+            else
+            {
+                var updated = await AgentsSvc.UpdatePromptAsync(_promptEditId.Value, new UpdateAgentPromptRequest(_pName, _pRule, _pBody), actor);
+                if (updated is not null)
+                {
+                    var idx = _prompts.FindIndex(x => x.Id == updated.Id);
+                    if (idx >= 0) { _prompts[idx] = updated; }
+                }
+            }
+            _promptModalOpen = false;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeletePromptAsync(Guid id)
+    {
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await AgentsSvc.DeletePromptAsync(id, actor);
+            _prompts.RemoveAll(p => p.Id == id);
+        }
+        finally { _busy = false; }
+    }
+
+    // ===== Recursos (modal) =====
+    private void OpenResource(AiAgentResourceDto? r)
+    {
+        _resError = null;
+        _resEditId = r?.Id;
+        _rName = r?.Name ?? "";
+        _rType = r?.ResourceType ?? AgentResourceType.Text;
+        _rDetail = r?.Detail;
+        _rFileUrl = r?.FileUrl;
+        _rFileName = r?.FileName;
+        _resModalOpen = true;
+    }
+
+    private async Task OnResourceModalFileAsync(InputFileChangeEventArgs e)
+    {
+        var saved = await SaveAgentFileAsync(e.File);
+        if (saved is null) { _resError = "No se pudo subir el archivo."; return; }
+        _rFileUrl = saved.Value.Url;
+        _rFileName = saved.Value.Name;
+    }
+
+    private async Task SaveResourceAsync()
+    {
+        _resError = null;
+        if (_editId is null) { return; }
+        if (string.IsNullOrWhiteSpace(_rName)) { _resError = "El nombre es obligatorio."; return; }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            if (_resEditId is null)
+            {
+                var created = await AgentsSvc.AddResourceAsync(new CreateAgentResourceRequest(_editId.Value, _rName, _rType, _rDetail, _rFileUrl, _rFileName), actor);
+                if (created is not null) { _resources.Add(created); }
+            }
+            else
+            {
+                var updated = await AgentsSvc.UpdateResourceAsync(_resEditId.Value, new UpdateAgentResourceRequest(_rName, _rType, _rDetail, _rFileUrl, _rFileName), actor);
+                if (updated is not null)
+                {
+                    var idx = _resources.FindIndex(x => x.Id == updated.Id);
+                    if (idx >= 0) { _resources[idx] = updated; }
+                }
+            }
+            _resModalOpen = false;
+        }
+        finally { _busy = false; }
+    }
+
+    private static string ResourceLabel(AgentResourceType t) => t switch
+    {
+        AgentResourceType.Image => "IMG",
+        AgentResourceType.Video => "VID",
+        AgentResourceType.Audio => "AUD",
+        AgentResourceType.Pdf => "PDF",
+        AgentResourceType.Location => "GEO",
+        _ => "TXT"
+    };
 
     private async Task TestKeyDown(KeyboardEventArgs e)
     {
@@ -466,49 +688,6 @@ else
             await ReloadAsync();
         }
         finally { _busy = false; }
-    }
-
-    // ===== Recursos =====
-    private async Task AddResourceAsync()
-    {
-        if (_editId is null) { return; }
-        _busy = true;
-        try
-        {
-            var actor = await ActorAsync();
-            var created = await AgentsSvc.AddResourceAsync(new CreateAgentResourceRequest(_editId.Value, "Nuevo recurso", AgentResourceType.Text, null, null, null), actor);
-            if (created is not null) { _resources.Add(created); }
-        }
-        finally { _busy = false; }
-    }
-
-    private async Task UpdateResourceAsync(AiAgentResourceDto r, string? name = null, AgentResourceType? type = null, string? detail = null, bool detailSet = false)
-    {
-        var actor = await ActorAsync();
-        var newName = name ?? r.Name;
-        var newType = type ?? r.ResourceType;
-        var newDetail = detail is not null || detailSet ? detail : r.Detail;
-        var updated = await AgentsSvc.UpdateResourceAsync(r.Id,
-            new UpdateAgentResourceRequest(newName, newType, newDetail, r.FileUrl, r.FileName), actor);
-        if (updated is not null)
-        {
-            var idx = _resources.FindIndex(x => x.Id == r.Id);
-            if (idx >= 0) { _resources[idx] = updated; }
-        }
-    }
-
-    private async Task OnResourceFileAsync(InputFileChangeEventArgs e, AiAgentResourceDto r)
-    {
-        var saved = await SaveAgentFileAsync(e.File);
-        if (saved is null) { return; }
-        var actor = await ActorAsync();
-        var updated = await AgentsSvc.UpdateResourceAsync(r.Id,
-            new UpdateAgentResourceRequest(r.Name, r.ResourceType, r.Detail, saved.Value.Url, saved.Value.Name), actor);
-        if (updated is not null)
-        {
-            var idx = _resources.FindIndex(x => x.Id == r.Id);
-            if (idx >= 0) { _resources[idx] = updated; }
-        }
     }
 
     private async Task DeleteResourceAsync(Guid id)

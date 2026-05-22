@@ -52,6 +52,7 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
     public DbSet<MessageTemplate> MessageTemplates => Set<MessageTemplate>();
     public DbSet<AiAgent> AiAgents => Set<AiAgent>();
     public DbSet<AiAgentResource> AiAgentResources => Set<AiAgentResource>();
+    public DbSet<AiAgentPrompt> AiAgentPrompts => Set<AiAgentPrompt>();
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
 
@@ -345,6 +346,15 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
             b.Property(x => x.Detail).HasColumnType("text");
             b.Property(x => x.FileUrl).HasMaxLength(500);
             b.Property(x => x.FileName).HasMaxLength(255);
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.AgentId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<AiAgentPrompt>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            b.Property(x => x.Rule).HasMaxLength(500);
+            b.Property(x => x.Body).HasColumnType("text");
             b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.AgentId, x.SortOrder });
         });
