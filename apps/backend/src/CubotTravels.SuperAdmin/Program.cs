@@ -38,6 +38,12 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.AddScoped<ITenantContext, CookieUserContext>();
 
+// Chat en tiempo real (SignalR): reemplaza el broadcaster no-op por el real.
+builder.Services.AddSignalR();
+builder.Services.AddScoped<CubotTravels.Application.Tenancy.IChatBroadcaster, CubotTravels.SuperAdmin.RealTime.SignalRChatBroadcaster>();
+// Tunel de desarrollo real (cloudflared); reemplaza el no-op de Application.
+builder.Services.AddSingleton<CubotTravels.Application.Tenancy.IDevTunnel, CubotTravels.SuperAdmin.RealTime.CloudflaredTunnel>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -63,6 +69,8 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+app.MapHub<CubotTravels.SuperAdmin.RealTime.ChatHub>("/hubs/chat");
 
 app.MapPost("/auth/login", async (
     HttpContext http,
@@ -150,5 +158,32 @@ app.MapGet("/comprobante/{paymentId:guid}", async (
 
     return Results.File(receipt.Content, "application/pdf", receipt.FileName);
 }).RequireAuthorization();
+
+// Webhook crudo de Evolution: traduce el evento, deduce el tenant del nombre de instancia,
+// valida un token global y persiste el entrante (con difusion SignalR en este mismo proceso).
+app.MapPost("/webhooks/evolution", async (
+    HttpRequest request,
+    IApplicationDbContext db,
+    CubotTravels.Application.Tenancy.IChatIngestService ingest,
+    CancellationToken ct) =>
+{
+    var master = await db.EvolutionMasterConfigs.FirstOrDefaultAsync(ct);
+    var expected = master?.WebhookToken
+        ?? Environment.GetEnvironmentVariable("CUBOT_EVOLUTION_WEBHOOK_TOKEN");
+    if (string.IsNullOrEmpty(expected)) { return Results.StatusCode(503); }
+
+    var provided = request.Headers["x-webhook-token"].ToString();
+    if (string.IsNullOrEmpty(provided)) { provided = request.Query["token"].ToString(); }
+    if (!string.Equals(provided, expected, StringComparison.Ordinal)) { return Results.Unauthorized(); }
+
+    using var doc = await System.Text.Json.JsonDocument.ParseAsync(request.Body, cancellationToken: ct);
+    var parsed = CubotTravels.SuperAdmin.RealTime.EvolutionWebhookParser.Parse(doc.RootElement);
+    if (parsed is null) { return Results.Ok(new { status = "ignored" }); }
+
+    var result = await ingest.IngestTrustedAsync(parsed.TenantId, parsed.Payload, ct);
+    return result == CubotTravels.Application.Tenancy.ChatIngestResult.Duplicate
+        ? Results.Ok(new { status = "duplicate" })
+        : Results.Accepted();
+}).AllowAnonymous().DisableAntiforgery();
 
 app.Run();

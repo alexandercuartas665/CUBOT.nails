@@ -32,8 +32,16 @@ public static class DependencyInjection
         services.AddScoped<Tenancy.ILeadService, Tenancy.LeadService>();
         services.AddScoped<Tenancy.IFollowUpTaskService, Tenancy.FollowUpTaskService>();
         services.AddScoped<Tenancy.IChatService, Tenancy.ChatService>();
+        services.AddScoped<Tenancy.IMessageTemplateService, Tenancy.MessageTemplateService>();
+        // Broadcaster por defecto (no-op); la app host con SignalR lo reemplaza.
+        services.AddScoped<Tenancy.IChatBroadcaster, Tenancy.NoOpChatBroadcaster>();
+        services.AddScoped<Tenancy.IWebhookAdminService, Tenancy.WebhookAdminService>();
+        // Tunel por defecto (no-op); la app host con cloudflared lo reemplaza por singleton.
+        services.AddSingleton<Tenancy.IDevTunnel, Tenancy.NoOpDevTunnel>();
         services.AddScoped<Tenancy.IChatIngestService, Tenancy.ChatIngestService>();
         services.AddScoped<Tenancy.IDashboardService, Tenancy.DashboardService>();
+        services.AddScoped<Tenancy.IAiAgentService, Tenancy.AiAgentService>();
+        services.AddScoped<Tenancy.IAutomationService, Tenancy.AutomationService>();
         return services;
     }
 }

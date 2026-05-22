@@ -70,3 +70,9 @@ window.cubotPipeline = (function () {
     init: function (ref) { dotnet = ref; wire(); }
   };
 })();
+
+// Desplaza el cuerpo del chat al ultimo mensaje (auto-scroll al recibir/enviar).
+window.cubotScrollChat = function () {
+  const body = document.querySelector('.pl-chat-body');
+  if (body) { body.scrollTop = body.scrollHeight; }
+};

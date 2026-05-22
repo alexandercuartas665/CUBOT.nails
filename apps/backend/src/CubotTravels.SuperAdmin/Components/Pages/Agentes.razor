@@ -1,11 +1,401 @@
 @page "/agentes"
 @attribute [Authorize]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using CubotTravels.Application.Tenancy
+@using CubotTravels.Domain.Enums
+@inject IAiAgentService AgentsSvc
+@inject IWebHostEnvironment Env
 
 <PageTitle>Agentes IA - CUBOT.travels</PageTitle>
 
-<ModulePlaceholder Eyebrow="Infraestructura & IA" Title="Agentes IA"
-                   Description="Copiloto comercial, clasificador, resumen y seguimiento. Inician en modo sugerencia, con control de costo por plan.">
-    <Icon>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
-    </Icon>
-</ModulePlaceholder>
+<div class="module-head">
+    <div>
+        <div class="module-eyebrow">
+            <div class="module-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+            </div>
+            <span>Infraestructura & IA</span>
+        </div>
+        <h1 class="page-title" style="margin-top:12px;">Agentes <span>IA</span></h1>
+        <p class="page-sub" style="margin-bottom:0;">Configura cada agente: proveedor (Claude, Gemini o ChatGPT), prompt, recursos y ponlo en produccion o apagalo.</p>
+    </div>
+    <button class="btn btn-primary" @onclick="OpenNew">+ Nuevo agente</button>
+</div>
+
+@if (_loading)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_agents.Count == 0)
+{
+    <div class="card" style="padding:28px;max-width:680px;text-align:center;color:var(--muted-foreground);">
+        Aun no hay agentes. Crea el primero con "+ Nuevo agente".
+    </div>
+}
+else
+{
+    <div class="ag-grid">
+        @foreach (var a in _agents)
+        {
+            <div class="ag-card">
+                <div class="ag-card-top">
+                    <span class="ag-provider @ProviderClass(a.Provider)">@ProviderLabel(a.Provider)</span>
+                    <span class="badge @(a.IsActive ? "bg-success" : "bg-secondary")">@(a.IsActive ? "En produccion" : "Apagado")</span>
+                </div>
+                <div class="ag-name">@a.Name</div>
+                @if (!string.IsNullOrWhiteSpace(a.Role))
+                {
+                    <div class="ag-role">@a.Role</div>
+                }
+                <div class="ag-prompt">@(string.IsNullOrWhiteSpace(a.SystemPrompt) ? "Sin prompt configurado" : Trim(a.SystemPrompt, 110))</div>
+                <div class="ag-foot">
+                    <span class="ag-res">@a.ResourceCount recurso@(a.ResourceCount == 1 ? "" : "s")</span>
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenEditAsync(a.Id)" disabled="@_busy">Configurar</button>
+                        <label class="ag-switch" title="@(a.IsActive ? "Apagar" : "Poner en produccion")">
+                            <input type="checkbox" checked="@a.IsActive" @onchange="@(e => ToggleActiveAsync(a, (bool)e.Value!))" disabled="@_busy" />
+                            <span class="ag-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@* ===== Modal: configurar agente ===== *@
+@if (_editorOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog" style="max-width:900px;">
+            <div class="modal-head">
+                <h3>@(_editId is null ? "Nuevo agente" : "Configurar agente")</h3>
+                <button class="modal-close" @onclick="CloseEditor">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="field-row">
+                    <div class="field">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-control" @bind="_fName" autocomplete="off" />
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Rol / funcion</label>
+                        <input class="form-control" @bind="_fRole" placeholder="Copiloto, clasificador, seguimiento..." autocomplete="off" />
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="form-label">Proveedor</label>
+                        <select class="form-control" @bind="_fProvider">
+                            <option value="@AiProvider.Claude">Claude</option>
+                            <option value="@AiProvider.Gemini">Gemini</option>
+                            <option value="@AiProvider.ChatGpt">ChatGPT</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Modelo (opcional)</label>
+                        <input class="form-control" @bind="_fModel" placeholder="@ModelHint(_fProvider)" autocomplete="off" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="form-label">Prompt del sistema</label>
+                    <textarea class="form-control" rows="5" @bind="_fPrompt" placeholder="Instrucciones que definen el comportamiento del agente..."></textarea>
+                </div>
+                @if (_editorError is not null)
+                {
+                    <div class="text-danger small">@_editorError</div>
+                }
+                <div style="display:flex;gap:8px;align-items:center;margin:4px 0 8px;">
+                    <button class="btn btn-primary" @onclick="SaveAgentAsync" disabled="@_busy">@(_editId is null ? "Crear agente" : "Guardar cambios")</button>
+                    @if (_editId is not null)
+                    {
+                        <label class="ag-switch">
+                            <input type="checkbox" checked="@_fActive" @onchange="@(e => ToggleActiveInEditorAsync((bool)e.Value!))" disabled="@_busy" />
+                            <span class="ag-slider"></span>
+                        </label>
+                        <span class="small text-muted">@(_fActive ? "En produccion" : "Apagado")</span>
+                    }
+                </div>
+
+                @if (_editId is not null)
+                {
+                    <hr style="border-color:var(--border);margin:14px 0;" />
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                        <div class="pl-stagegroup-title">Recursos del agente</div>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="AddResourceAsync" disabled="@_busy">+ Agregar recurso</button>
+                    </div>
+                    <div class="text-muted" style="font-size:12px;margin-bottom:10px;">Archivos y datos que el agente puede usar para responder a los clientes.</div>
+
+                    @if (_resources.Count == 0)
+                    {
+                        <div class="text-muted small">Sin recursos. Agrega imagenes, videos, audios, PDF, ubicaciones o textos.</div>
+                    }
+                    else
+                    {
+                        <table class="ag-res-table">
+                            <thead>
+                                <tr><th style="width:20%;">Nombre</th><th style="width:16%;">Tipo</th><th>Detalle</th><th style="width:24%;">Archivo</th><th></th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var r in _resources)
+                                {
+                                    <tr>
+                                        <td><input class="form-control form-control-sm" value="@r.Name" @onchange="@(e => UpdateResourceAsync(r, name: e.Value?.ToString()))" /></td>
+                                        <td>
+                                            <select class="form-control form-control-sm" value="@r.ResourceType" @onchange="@(e => UpdateResourceAsync(r, type: Enum.Parse<AgentResourceType>(e.Value!.ToString()!)))">
+                                                <option value="@AgentResourceType.Image">imagen</option>
+                                                <option value="@AgentResourceType.Video">video</option>
+                                                <option value="@AgentResourceType.Audio">audio</option>
+                                                <option value="@AgentResourceType.Pdf">pdf</option>
+                                                <option value="@AgentResourceType.Location">ubicacion</option>
+                                                <option value="@AgentResourceType.Text">texto</option>
+                                            </select>
+                                        </td>
+                                        <td><textarea class="form-control form-control-sm" rows="2" value="@r.Detail" @onchange="@(e => UpdateResourceAsync(r, detail: e.Value?.ToString()))" placeholder="@DetailHint(r.ResourceType)"></textarea></td>
+                                        <td>
+                                            @if (r.ResourceType is AgentResourceType.Text or AgentResourceType.Location)
+                                            {
+                                                <span class="text-muted small">No requiere archivo</span>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(r.FileUrl))
+                                            {
+                                                <div class="ag-file">
+                                                    <a href="@r.FileUrl" target="_blank">@(r.FileName ?? "ver archivo")</a>
+                                                    <InputFile OnChange="@(e => OnResourceFileAsync(e, r))" class="ag-fileinput" />
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <InputFile OnChange="@(e => OnResourceFileAsync(e, r))" class="ag-fileinput" />
+                                            }
+                                        </td>
+                                        <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteResourceAsync(r.Id)" disabled="@_busy">&times;</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="CloseEditor">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _loading = true;
+    private bool _busy;
+    private List<AiAgentDto> _agents = new();
+
+    private bool _editorOpen;
+    private Guid? _editId;
+    private string? _editorError;
+    private string _fName = "";
+    private string? _fRole;
+    private AiProvider _fProvider = AiProvider.Claude;
+    private string? _fModel;
+    private string _fPrompt = "";
+    private bool _fActive;
+    private List<AiAgentResourceDto> _resources = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _agents = (await AgentsSvc.ListAsync()).ToList();
+    }
+
+    private void OpenNew()
+    {
+        _editId = null;
+        _editorError = null;
+        _fName = "";
+        _fRole = null;
+        _fProvider = AiProvider.Claude;
+        _fModel = null;
+        _fPrompt = "";
+        _fActive = false;
+        _resources = new();
+        _editorOpen = true;
+    }
+
+    private async Task OpenEditAsync(Guid id)
+    {
+        var detail = await AgentsSvc.GetAsync(id);
+        if (detail is null) { return; }
+        _editId = id;
+        _editorError = null;
+        _fName = detail.Agent.Name;
+        _fRole = detail.Agent.Role;
+        _fProvider = detail.Agent.Provider;
+        _fModel = detail.Agent.Model;
+        _fPrompt = detail.Agent.SystemPrompt;
+        _fActive = detail.Agent.IsActive;
+        _resources = detail.Resources.ToList();
+        _editorOpen = true;
+    }
+
+    private void CloseEditor() => _editorOpen = false;
+
+    private async Task SaveAgentAsync()
+    {
+        _editorError = null;
+        if (string.IsNullOrWhiteSpace(_fName)) { _editorError = "El nombre es obligatorio."; return; }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            if (_editId is null)
+            {
+                var created = await AgentsSvc.CreateAsync(new CreateAiAgentRequest(_fName, _fRole, _fProvider, _fModel, _fPrompt), actor);
+                if (created is null) { _editorError = "No se pudo crear el agente."; return; }
+                _editId = created.Id;
+            }
+            else
+            {
+                await AgentsSvc.UpdateAsync(_editId.Value, new UpdateAiAgentRequest(_fName, _fRole, _fProvider, _fModel, _fPrompt), actor);
+            }
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleActiveAsync(AiAgentDto a, bool active)
+    {
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await AgentsSvc.SetActiveAsync(a.Id, active, actor);
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleActiveInEditorAsync(bool active)
+    {
+        if (_editId is null) { return; }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await AgentsSvc.SetActiveAsync(_editId.Value, active, actor);
+            _fActive = active;
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ===== Recursos =====
+    private async Task AddResourceAsync()
+    {
+        if (_editId is null) { return; }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var created = await AgentsSvc.AddResourceAsync(new CreateAgentResourceRequest(_editId.Value, "Nuevo recurso", AgentResourceType.Text, null, null, null), actor);
+            if (created is not null) { _resources.Add(created); }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task UpdateResourceAsync(AiAgentResourceDto r, string? name = null, AgentResourceType? type = null, string? detail = null, bool detailSet = false)
+    {
+        var actor = await ActorAsync();
+        var newName = name ?? r.Name;
+        var newType = type ?? r.ResourceType;
+        var newDetail = detail is not null || detailSet ? detail : r.Detail;
+        var updated = await AgentsSvc.UpdateResourceAsync(r.Id,
+            new UpdateAgentResourceRequest(newName, newType, newDetail, r.FileUrl, r.FileName), actor);
+        if (updated is not null)
+        {
+            var idx = _resources.FindIndex(x => x.Id == r.Id);
+            if (idx >= 0) { _resources[idx] = updated; }
+        }
+    }
+
+    private async Task OnResourceFileAsync(InputFileChangeEventArgs e, AiAgentResourceDto r)
+    {
+        var saved = await SaveAgentFileAsync(e.File);
+        if (saved is null) { return; }
+        var actor = await ActorAsync();
+        var updated = await AgentsSvc.UpdateResourceAsync(r.Id,
+            new UpdateAgentResourceRequest(r.Name, r.ResourceType, r.Detail, saved.Value.Url, saved.Value.Name), actor);
+        if (updated is not null)
+        {
+            var idx = _resources.FindIndex(x => x.Id == r.Id);
+            if (idx >= 0) { _resources[idx] = updated; }
+        }
+    }
+
+    private async Task DeleteResourceAsync(Guid id)
+    {
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await AgentsSvc.DeleteResourceAsync(id, actor);
+            _resources.RemoveAll(x => x.Id == id);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task<(string Url, string Name)?> SaveAgentFileAsync(IBrowserFile file)
+    {
+        const long max = 25L * 1024 * 1024;
+        if (file.Size <= 0 || file.Size > max) { return null; }
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(max).CopyToAsync(ms);
+        var ext = System.IO.Path.GetExtension(file.Name);
+        var dir = System.IO.Path.Combine(Env.WebRootPath, "uploads", "agents");
+        System.IO.Directory.CreateDirectory(dir);
+        var name = $"agent-{Guid.NewGuid():N}{ext}";
+        await System.IO.File.WriteAllBytesAsync(System.IO.Path.Combine(dir, name), ms.ToArray());
+        return ($"/uploads/agents/{name}", file.Name);
+    }
+
+    private async Task<Guid> ActorAsync()
+    {
+        if (AuthState is null) { return Guid.Empty; }
+        var st = await AuthState;
+        return Guid.TryParse(st.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+    }
+
+    private static string ProviderLabel(AiProvider p) => p switch
+    {
+        AiProvider.Claude => "Claude",
+        AiProvider.Gemini => "Gemini",
+        AiProvider.ChatGpt => "ChatGPT",
+        _ => p.ToString()
+    };
+    private static string ProviderClass(AiProvider p) => p switch
+    {
+        AiProvider.Claude => "p-claude",
+        AiProvider.Gemini => "p-gemini",
+        AiProvider.ChatGpt => "p-gpt",
+        _ => ""
+    };
+    private static string ModelHint(AiProvider p) => p switch
+    {
+        AiProvider.Claude => "claude-opus-4-7",
+        AiProvider.Gemini => "gemini-2.5-pro",
+        AiProvider.ChatGpt => "gpt-4o",
+        _ => ""
+    };
+    private static string DetailHint(AgentResourceType t) => t switch
+    {
+        AgentResourceType.Text => "Texto que el agente puede enviar",
+        AgentResourceType.Location => "lat,lng (ej: 10.39,-75.51)",
+        _ => "Descripcion / cuando usarlo"
+    };
+    private static string Trim(string s, int n) => s.Length > n ? s[..n] + "..." : s;
+}

@@ -7,5 +7,6 @@ services:
       dockerfile: Dockerfile
     container_name: cubot-web-prototype
     ports:
-      - "8080:8080"
+      # Host 8090 -> contenedor 8080 (8080 del host lo usa la app Blazor SuperAdmin).
+      - "8090:8080"
     restart: unless-stopped

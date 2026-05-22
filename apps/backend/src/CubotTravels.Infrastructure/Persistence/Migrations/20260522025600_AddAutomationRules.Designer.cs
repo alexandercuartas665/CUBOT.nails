@@ -3,6 +3,7 @@ using System;
 using CubotTravels.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CubotTravels.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(CubotTravelsDbContext))]
-    partial class CubotTravelsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260522025600_AddAutomationRules")]
+    partial class AddAutomationRules
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -187,10 +190,6 @@ namespace CubotTravels.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
-                    b.Property<int>("ExecutionCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("execution_count");
-
                     b.Property<string>("FollowUpTitle")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
@@ -210,11 +209,6 @@ namespace CubotTravels.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("name");
 
-                    b.Property<string>("ShiftName")
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)")
-                        .HasColumnName("shift_name");
-
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer")
                         .HasColumnName("sort_order");
@@ -223,28 +217,13 @@ namespace CubotTravels.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("stage_id");
 
-                    b.Property<string>("TemplateCategory")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("template_category");
-
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
-                    b.Property<int>("ThresholdMinutes")
+                    b.Property<int>("ThresholdHours")
                         .HasColumnType("integer")
-                        .HasColumnName("threshold_minutes");
-
-                    b.Property<string>("TimeWindowEnd")
-                        .HasMaxLength(5)
-                        .HasColumnType("character varying(5)")
-                        .HasColumnName("time_window_end");
-
-                    b.Property<string>("TimeWindowStart")
-                        .HasMaxLength(5)
-                        .HasColumnType("character varying(5)")
-                        .HasColumnName("time_window_start");
+                        .HasColumnName("threshold_hours");
 
                     b.Property<string>("Trigger")
                         .IsRequired()

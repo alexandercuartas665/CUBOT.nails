@@ -41,6 +41,18 @@ public interface IEvolutionApiClient
 
     /// <summary>Envia un mensaje de texto (POST /message/sendText/{instance}).</summary>
     Task<EvolutionSendResult> SendTextAsync(string baseUrl, string apiKey, string instanceName, string phone, string text, CancellationToken cancellationToken = default);
+
+    /// <summary>Envia imagen/video/documento en base64 con pie opcional (POST /message/sendMedia/{instance}). mediatype: image|video|document.</summary>
+    Task<EvolutionSendResult> SendMediaAsync(string baseUrl, string apiKey, string instanceName, string phone, string mediatype, string base64, string? mimeType, string? fileName, string? caption, CancellationToken cancellationToken = default);
+
+    /// <summary>Envia una nota de voz en base64 (POST /message/sendWhatsAppAudio/{instance}).</summary>
+    Task<EvolutionSendResult> SendAudioAsync(string baseUrl, string apiKey, string instanceName, string phone, string base64, CancellationToken cancellationToken = default);
+
+    /// <summary>Envia una ubicacion (POST /message/sendLocation/{instance}).</summary>
+    Task<EvolutionSendResult> SendLocationAsync(string baseUrl, string apiKey, string instanceName, string phone, double latitude, double longitude, string? name, string? address, CancellationToken cancellationToken = default);
+
+    /// <summary>Configura el webhook entrante de la instancia (POST /webhook/set/{instance}) para recibir mensajes.</summary>
+    Task<EvolutionSendResult> SetWebhookAsync(string baseUrl, string apiKey, string instanceName, string webhookUrl, string token, CancellationToken cancellationToken = default);
 }
 
 public interface IEvolutionMasterConfigService

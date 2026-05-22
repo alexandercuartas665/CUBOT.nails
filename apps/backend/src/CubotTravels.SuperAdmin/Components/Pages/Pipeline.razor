@@ -7,7 +7,13 @@
 @inject IPipelineService PipelineSvc
 @inject ILeadService LeadsSvc
 @inject ITenantUserService UsersSvc
+@inject IChatService ChatSvc
+@inject IMessageTemplateService TemplatesSvc
+@inject IWhatsAppLineService LinesSvc
+@inject IWebHostEnvironment Env
+@inject NavigationManager Nav
 @inject IJSRuntime JS
+@using Microsoft.AspNetCore.SignalR.Client
 
 <PageTitle>Pipeline - CUBOT.travels</PageTitle>
 
@@ -62,10 +68,92 @@ else
         </div>
     </div>
 
+    @* ===== Barra: busqueda + orden + filtros ===== *@
+    <div class="pl-toolbar">
+        <div class="pl-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input placeholder="Buscar cliente o destino..." @bind="_search" @bind:event="oninput" />
+            @if (!string.IsNullOrEmpty(_search))
+            {
+                <button class="pl-search-clear" @onclick="() => _search = string.Empty" title="Limpiar">&times;</button>
+            }
+        </div>
+        <div class="pl-sort">
+            <span class="pl-sort-lbl">Ordenar:</span>
+            <select @bind="_sortBy">
+                <option value="time">Tiempo en columna</option>
+                <option value="name">Nombre (A-Z)</option>
+                <option value="unanswered">Sin responder primero</option>
+            </select>
+        </div>
+        <div class="pl-filt-anchor">
+            <button class="btn btn-outline-secondary @(FiltersActive ? "pl-filt-on" : "")" @onclick="() => _filtersOpen = !_filtersOpen">
+                Filtros@(FiltersActive ? $" ({ActiveFilterCount})" : "")
+            </button>
+            @if (_filtersOpen)
+            {
+                <div class="pl-filters">
+                    <div class="pl-filters-head">
+                <span>Filtros avanzados</span>
+                <button class="pl-link" @onclick="ClearFilters">Limpiar</button>
+            </div>
+            <div class="pl-filt-group">
+                <div class="pl-filt-lbl">Asesor</div>
+                <div class="pl-chips">
+                    @foreach (var u in _team)
+                    {
+                        <button class="pl-fchip @(_filterAsesores.Contains(u.Id) ? "on" : "")" @onclick="() => ToggleAsesor(u.Id)">
+                            <span class="dot" style="background:@AseColor(TeamLabel(u))"></span>@FirstName(TeamLabel(u))
+                        </button>
+                    }
+                </div>
+            </div>
+            <div class="pl-filt-group">
+                <div class="pl-filt-lbl">Etapa</div>
+                <div class="pl-chips">
+                    @foreach (var s in _stages)
+                    {
+                        <button class="pl-fchip @(_filterStages.Contains(s.Id) ? "on" : "")" @onclick="() => ToggleStage(s.Id)">@s.Name</button>
+                    }
+                </div>
+            </div>
+            @if (DistinctDestinations().Count > 0)
+            {
+                <div class="pl-filt-group">
+                    <div class="pl-filt-lbl">Destino</div>
+                    <div class="pl-chips">
+                        @foreach (var dest in DistinctDestinations())
+                        {
+                            <button class="pl-fchip @(_filterDestinos.Contains(dest) ? "on" : "")" @onclick="() => ToggleDestino(dest)">@dest</button>
+                        }
+                    </div>
+                </div>
+            }
+            <div class="pl-filt-group">
+                <div class="pl-filt-lbl">Atencion</div>
+                <label class="pl-toggle">
+                    <input type="checkbox" checked="@_onlyUnanswered" @onchange="@(e => _onlyUnanswered = (bool)e.Value!)" />
+                    <span>Solo clientes sin respuesta</span>
+                </label>
+            </div>
+            <div class="pl-filt-group">
+                <div class="pl-filt-lbl">Valor del pipeline</div>
+                <div class="pl-chips">
+                    <button class="pl-fchip @(_filterValue.Contains("lt2") ? "on" : "")" @onclick="@(() => ToggleValue("lt2"))">&lt; $2M</button>
+                    <button class="pl-fchip @(_filterValue.Contains("2to5") ? "on" : "")" @onclick="@(() => ToggleValue("2to5"))">$2M - $5M</button>
+                    <button class="pl-fchip @(_filterValue.Contains("gt5") ? "on" : "")" @onclick="@(() => ToggleValue("gt5"))">$5M+</button>
+                </div>
+            </div>
+                </div>
+            }
+        </div>
+    </div>
+
     <div class="kanban">
         @foreach (var stage in _stages)
         {
-            var leadsInStage = _leads.Where(l => l.StageId == stage.Id).ToList();
+            if (_filterStages.Count > 0 && !_filterStages.Contains(stage.Id)) { continue; }
+            var leadsInStage = VisibleLeads(stage.Id);
             <div class="kb-col" data-stage-id="@stage.Id">
                 <div class="kb-col-head">
                     <div>
@@ -83,14 +171,22 @@ else
                     {
                         @foreach (var lead in leadsInStage)
                         {
-                            <div class="kb-card@(IsStale(lead) ? " stale" : "")" draggable="true" data-lead-id="@lead.Id"
+                            var pend = PendingFor(lead);
+                            <div class="@CardCss(lead, pend)" draggable="true" data-lead-id="@lead.Id"
                                  @onclick="() => OpenLeadAsync(lead.Id)">
                                 <div class="kb-top">
                                     <span class="kb-time">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                                         @TimeInStageLabel(lead) aqui
                                     </span>
-                                    @if (IsStale(lead))
+                                    @if (pend is { } p)
+                                    {
+                                        <span class="kb-badge reply">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                            @WaitingLabel(p.WaitingSince)
+                                        </span>
+                                    }
+                                    else if (IsStale(lead))
                                     {
                                         <span class="kb-badge stale">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -100,6 +196,14 @@ else
                                 </div>
 
                                 <div class="nm">@lead.ContactName</div>
+
+                                @if (pend is { } pc)
+                                {
+                                    <div class="kb-unread">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                        @pc.UnansweredCount @(pc.UnansweredCount == 1 ? "mensaje sin responder" : "mensajes sin responder")
+                                    </div>
+                                }
 
                                 <div class="kb-route">
                                     <span class="codes">
@@ -212,11 +316,32 @@ else
 {
     var curIdx = _stages.FindIndex(s => s.Id == _editStageId);
     <div class="modal-overlay">
-        <div class="modal-dialog" style="max-width:680px;">
+        <div class="modal-dialog pl-lead-dialog">
+          <div class="pl-lead-left">
             <div class="modal-head">
-                <div>
+                <div style="min-width:0;">
                     <h3>@(_el.ContactName)</h3>
-                    <div class="text-muted" style="font-size:12px;margin-top:2px;">@StageName(_editStageId) &middot; @StatusText(_editLead.Status)</div>
+                    <div class="pl-tags">
+                        <span class="pl-state-pill">@StageName(_editStageId)</span>
+                        @if (!string.IsNullOrWhiteSpace(_el.Destination))
+                        {
+                            <span class="pl-chip">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
+                                @_el.Destination
+                            </span>
+                        }
+                        @if (_el.EstimatedValue is decimal ev && ev > 0)
+                        {
+                            <span class="pl-chip">@ev.ToString("N0") @(_el.Currency ?? "COP")</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_el.ContactPhone))
+                        {
+                            <span class="pl-chip">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                @_el.ContactPhone
+                            </span>
+                        }
+                    </div>
                 </div>
                 <button class="modal-close" @onclick="CloseLead">&times;</button>
             </div>
@@ -357,6 +482,278 @@ else
                     <button class="btn btn-primary" @onclick="SaveLeadAsync" disabled="@_busy">Guardar</button>
                 </div>
             </div>
+          </div>
+
+          @* ===== Panel de chat WhatsApp ===== *@
+          <div class="pl-chat">
+            <div class="pl-chat-head">
+                <div class="pl-chat-avatar">@Initials(_el.ContactName)</div>
+                <div style="flex:1;min-width:0;">
+                    <div class="nm">@(_el.ContactName)</div>
+                    <div class="sub">En linea &middot; WhatsApp</div>
+                    @if (_chatLines.Count > 0)
+                    {
+                        <div class="pl-chat-line">
+                            <select @bind="_chatLineId" title="Linea WhatsApp para responder">
+                                @foreach (var ln in _chatLines)
+                                {
+                                    <option value="@ln.Id">@(string.IsNullOrWhiteSpace(ln.PhoneNumber) ? ln.InstanceName : $"{ln.InstanceName} ({ln.PhoneNumber})")</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                </div>
+                <span class="pl-chat-more">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                    Mas
+                </span>
+            </div>
+            <div class="pl-chat-body">
+                @if (string.IsNullOrWhiteSpace(_el.ContactPhone))
+                {
+                    <div class="pl-chat-empty">Agrega un telefono al lead para iniciar la conversacion por WhatsApp.</div>
+                }
+                else if (_chatLines.Count == 0)
+                {
+                    <div class="pl-chat-empty">No hay lineas WhatsApp conectadas. Conecta una en el modulo Lineas.</div>
+                }
+                else if (_messages.Count == 0)
+                {
+                    <div class="pl-chat-empty">Aun no hay mensajes. Escribe el primero abajo.</div>
+                }
+                else
+                {
+                    DateTime? lastDay = null;
+                    @foreach (var m in _messages)
+                    {
+                        var day = m.SentAt.LocalDateTime.Date;
+                        if (lastDay != day)
+                        {
+                            lastDay = day;
+                            <div class="pl-date-divider">@day.ToString("dd 'DE' MMMM").ToUpperInvariant()</div>
+                        }
+                        <div class="pl-bubble @(m.Direction == MessageDirection.Outbound ? "out" : "in")">
+                            @switch (m.MediaType)
+                            {
+                                case MessageMediaType.Image:
+                                    <img class="pl-media-img" src="@m.MediaUrl" alt="imagen" />
+                                    break;
+                                case MessageMediaType.Video:
+                                    <video class="pl-media-img" src="@m.MediaUrl" controls></video>
+                                    break;
+                                case MessageMediaType.Audio:
+                                    <audio src="@m.MediaUrl" controls style="max-width:220px;"></audio>
+                                    break;
+                                case MessageMediaType.Document:
+                                    <a class="pl-media-doc" href="@m.MediaUrl" target="_blank">Documento adjunto</a>
+                                    break;
+                                case MessageMediaType.Location:
+                                    <a class="pl-media-doc" href="@MapsLink(m.MediaUrl)" target="_blank">Ver ubicacion en el mapa</a>
+                                    break;
+                            }
+                            @if (!string.IsNullOrWhiteSpace(m.Body))
+                            {
+                                <div>@m.Body</div>
+                            }
+                            <div class="t">
+                                @if (m.Direction == MessageDirection.Outbound && !string.IsNullOrWhiteSpace(m.SentByName))
+                                {
+                                    <span>@m.SentByName &middot; </span>
+                                }
+                                @m.SentAt.LocalDateTime.ToString("hh:mm tt")
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+            @if (!string.IsNullOrWhiteSpace(_el.ContactPhone) && _chatLines.Count > 0)
+            {
+                <div class="pl-chat-quick">
+                    <div class="pl-qr-head">
+                        <span>Mensajes pregrabados</span>
+                        <div class="pl-qr-tabs">
+                            @foreach (var cat in QrCategories)
+                            {
+                                <button class="pl-qr-tab @(cat.Key == _qrCategory ? "active" : "")" @onclick="() => _qrCategory = cat.Key">@cat.Label</button>
+                            }
+                            <button class="pl-qr-tab" style="border:1px solid var(--border);" @onclick="OpenTemplateManager" title="Crear/editar pregrabados">+ Gestionar</button>
+                        </div>
+                    </div>
+                    <div class="pl-qr-list">
+                        @foreach (var tpl in CurrentTemplates())
+                        {
+                            var filled = FillTemplate(tpl.Body);
+                            var label = tpl.MediaType == MessageMediaType.None ? filled : $"{MediaIcon(tpl.MediaType)} {(string.IsNullOrWhiteSpace(filled) ? tpl.MediaType.ToString() : filled)}";
+                            <button class="pl-quick-chip" title="@filled" @onclick="() => UseTemplateAsync(tpl)">@label</button>
+                        }
+                        @if (CurrentTemplates().Count == 0)
+                        {
+                            <span class="text-muted" style="font-size:11px;">Sin pregrabados en esta categoria. Usa "+ Gestionar".</span>
+                        }
+                    </div>
+                </div>
+                <div class="pl-chat-input">
+                    <div class="pl-attach">
+                        <button class="pl-attach-btn" title="Adjuntar" @onclick="() => _attachOpen = !_attachOpen" disabled="@_chatBusy">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        </button>
+                        @if (_attachOpen)
+                        {
+                            <div class="pl-attach-menu">
+                                <label class="pl-attach-item">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                                    Imagen
+                                    <InputFile OnChange="@(e => OnAttachAsync(e, MessageMediaType.Image))" accept="image/*" style="display:none;" />
+                                </label>
+                                <label class="pl-attach-item">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+                                    Video
+                                    <InputFile OnChange="@(e => OnAttachAsync(e, MessageMediaType.Video))" accept="video/*" style="display:none;" />
+                                </label>
+                                <label class="pl-attach-item">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                                    Audio
+                                    <InputFile OnChange="@(e => OnAttachAsync(e, MessageMediaType.Audio))" accept="audio/*" style="display:none;" />
+                                </label>
+                                <label class="pl-attach-item">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+                                    Documento
+                                    <InputFile OnChange="@(e => OnAttachAsync(e, MessageMediaType.Document))" accept="*/*" style="display:none;" />
+                                </label>
+                                <button class="pl-attach-item" @onclick="OpenLocation">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                                    Ubicacion
+                                </button>
+                            </div>
+                        }
+                    </div>
+                    <input placeholder="Escribe un mensaje..." @bind="_chatDraft" @bind:event="oninput" @onkeydown="ChatKeyDown" disabled="@_chatBusy" />
+                    <button class="pl-chat-send" @onclick="SendChatAsync" disabled="@(_chatBusy || string.IsNullOrWhiteSpace(_chatDraft))" title="Enviar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                </div>
+                @if (_chatError is not null)
+                {
+                    <div class="text-danger small" style="padding:0 12px 8px;">@_chatError</div>
+                }
+            }
+          </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: gestor de mensajes pregrabados ===== *@
+@if (_tplManagerOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog" style="max-width:620px;">
+            <div class="modal-head">
+                <h3>Mensajes pregrabados</h3>
+                <button class="modal-close" @onclick="() => _tplManagerOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="field">
+                    <label class="form-label">Categoria</label>
+                    <input class="form-control" list="pl-tpl-cats" @bind="_tplFormCategory" placeholder="Elige una o escribe una nueva" autocomplete="off" />
+                    <datalist id="pl-tpl-cats">
+                        @foreach (var cat in QrCategories)
+                        {
+                            <option value="@cat.Key">@cat.Label</option>
+                        }
+                    </datalist>
+                    <div class="text-muted" style="font-size:11px;margin-top:3px;">Escribe un nombre nuevo para crear otra categoria.</div>
+                </div>
+                <div class="field">
+                    <label class="form-label">Mensaje</label>
+                    <textarea class="form-control" rows="2" @bind="_tplFormBody" placeholder="Usa {asesor} y {destino} para personalizar"></textarea>
+                </div>
+                <div class="field">
+                    <label class="form-label">Adjunto (opcional)</label>
+                    @if (_tplFormMediaUrl is not null)
+                    {
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span class="pl-chip">@MediaIcon(_tplFormMediaType) @_tplFormMediaType</span>
+                            <button class="btn btn-outline-danger" style="padding:2px 8px;" @onclick="ClearTemplateMedia">Quitar</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <InputFile OnChange="OnTemplateMediaAsync" accept="image/*,video/*,audio/*" class="form-control" style="max-width:280px;" />
+                    }
+                </div>
+                @if (_tplFormError is not null)
+                {
+                    <div class="text-danger small">@_tplFormError</div>
+                }
+                <div style="display:flex;gap:8px;margin:4px 0 14px;">
+                    <button class="btn btn-primary" @onclick="SaveTemplateAsync" disabled="@_tplBusy">@(_tplEditId is null ? "+ Agregar" : "Guardar cambios")</button>
+                    @if (_tplEditId is not null)
+                    {
+                        <button class="btn btn-outline-secondary" @onclick="ResetTemplateForm">Cancelar edicion</button>
+                    }
+                </div>
+
+                <hr style="border-color:var(--border);" />
+                @foreach (var cat in QrCategories)
+                {
+                    var items = _templates.Where(t => t.Category == cat.Key).OrderBy(t => t.SortOrder).ToList();
+                    <div class="pl-stagegroup-title" style="margin-top:10px;">@cat.Label (@items.Count)</div>
+                    @foreach (var t in items)
+                    {
+                        <div class="cfg-row">
+                            <div class="grow">
+                                <div style="font-size:13px;">
+                                    @if (t.MediaType != MessageMediaType.None) { <span>@MediaIcon(t.MediaType) </span> }
+                                    @(string.IsNullOrWhiteSpace(t.Body) ? "(solo adjunto)" : t.Body)
+                                </div>
+                            </div>
+                            <button class="btn btn-outline-secondary" style="padding:2px 8px;" @onclick="() => EditTemplate(t)">Editar</button>
+                            <button class="btn btn-outline-danger" style="padding:2px 8px;" @onclick="() => DeleteTemplateAsync(t.Id)" disabled="@_tplBusy">Eliminar</button>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="() => _tplManagerOpen = false">Listo</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: enviar ubicacion ===== *@
+@if (_locationOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog" style="max-width:420px;">
+            <div class="modal-head">
+                <h3>Enviar ubicacion</h3>
+                <button class="modal-close" @onclick="() => _locationOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="field">
+                    <label class="form-label">Nombre del lugar (opcional)</label>
+                    <input class="form-control" @bind="_locName" placeholder="Hotel, aeropuerto, oficina..." />
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="form-label">Latitud *</label>
+                        <input class="form-control" @bind="_locLat" placeholder="10.3997" />
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Longitud *</label>
+                        <input class="form-control" @bind="_locLng" placeholder="-75.5144" />
+                    </div>
+                </div>
+                <div class="text-muted" style="font-size:11px;">Pega coordenadas desde Google Maps (clic derecho &rarr; copiar).</div>
+                @if (_locError is not null)
+                {
+                    <div class="text-danger small">@_locError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="() => _locationOpen = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SendLocationAsync" disabled="@_chatBusy">Enviar</button>
+            </div>
         </div>
     </div>
 }
@@ -487,6 +884,16 @@ else
     private bool _canManage;
     private int _conversion;
 
+    // Busqueda, orden y filtros del tablero
+    private string? _search;
+    private string _sortBy = "time";
+    private bool _filtersOpen;
+    private readonly HashSet<Guid> _filterAsesores = new();
+    private readonly HashSet<Guid> _filterStages = new();
+    private readonly HashSet<string> _filterValue = new();
+    private readonly HashSet<string> _filterDestinos = new();
+    private bool _onlyUnanswered;
+
     private DotNetObjectReference<Pipeline>? _selfRef;
 
     // Nuevo lead
@@ -503,6 +910,298 @@ else
     private Dictionary<string, string?> _editValues = new();
     private List<LeadActivityDto> _activities = new();
 
+    // Chat WhatsApp del lead
+    private ConversationDto? _conversation;
+    private HubConnection? _hub;
+    private string? _joinedConversation;
+    private bool _scrollChatPending;
+    private List<MessageDto> _messages = new();
+
+    // Estado "sin responder" por telefono (digitos) para colorear las tarjetas.
+    private IReadOnlyDictionary<string, LeadChatStateDto> _pending = new Dictionary<string, LeadChatStateDto>();
+    private string? _tenantId;
+    private List<WhatsAppLineDto> _chatLines = new();
+    private Guid _chatLineId;
+    private string? _chatDraft;
+    private string? _chatError;
+    private bool _chatBusy;
+    private string _qrCategory = "saludo";
+    private List<MessageTemplateDto> _templates = new();
+    private bool _attachOpen;
+
+    // Gestor de pregrabados
+    private bool _tplManagerOpen;
+    private bool _tplBusy;
+    private string? _tplFormError;
+    private Guid? _tplEditId;
+    private string _tplFormCategory = "saludo";
+    private string? _tplFormBody;
+    private MessageMediaType _tplFormMediaType = MessageMediaType.None;
+    private string? _tplFormMediaUrl;
+    private string? _tplFormMediaMime;
+
+    // Envio de ubicacion
+    private bool _locationOpen;
+    private string? _locName;
+    private string? _locLat;
+    private string? _locLng;
+    private string? _locError;
+
+    // Categorias = las estandar + las personalizadas que existan en las plantillas del tenant.
+    private List<(string Key, string Label)> QrCategories
+    {
+        get
+        {
+            var keys = MessageTemplateCategories.All.Select(c => c.Key).ToList();
+            foreach (var t in _templates)
+            {
+                if (!keys.Contains(t.Category)) { keys.Add(t.Category); }
+            }
+            return keys.Select(k => (k, CategoryLabel(k))).ToList();
+        }
+    }
+
+    private static string CategoryLabel(string key)
+    {
+        var lbl = MessageTemplateCategories.Label(key);
+        if (lbl == key && key.Length > 0) { return char.ToUpperInvariant(key[0]) + key[1..]; }
+        return lbl;
+    }
+
+    private List<MessageTemplateDto> CurrentTemplates()
+        => _templates.Where(t => t.Category == _qrCategory).OrderBy(t => t.SortOrder).ToList();
+
+    private string FillTemplate(string template)
+    {
+        var destino = string.IsNullOrWhiteSpace(_el.Destination)
+            ? "tu destino"
+            : _el.Destination!.Split('→', '>').Last().Trim();
+        var asesor = AssignedFirstName() ?? "tu asesor";
+        return template
+            .Replace("{destino}", destino)
+            .Replace("{asesor}", asesor);
+    }
+
+    private string? AssignedFirstName()
+    {
+        if (_editLead?.AssignedToTenantUserId is not Guid id) { return null; }
+        var u = _team.FirstOrDefault(t => t.Id == id);
+        var label = u is null ? null : TeamLabel(u);
+        return string.IsNullOrWhiteSpace(label) ? null : label.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+    }
+
+    private static string MediaIcon(MessageMediaType t) => t switch
+    {
+        MessageMediaType.Image => "Imagen",
+        MessageMediaType.Video => "Video",
+        MessageMediaType.Audio => "Audio",
+        MessageMediaType.Document => "Doc",
+        MessageMediaType.Location => "Ubicacion",
+        _ => ""
+    };
+
+    private static string MapsLink(string? coords) => $"https://www.google.com/maps?q={coords}";
+
+    // ===== Adjuntos del chat =====
+    private async Task UseTemplateAsync(MessageTemplateDto t)
+    {
+        _chatError = null;
+        if (t.MediaType == MessageMediaType.None)
+        {
+            _chatDraft = FillTemplate(t.Body);
+            return;
+        }
+        if (_conversation is null || _chatLineId == Guid.Empty || t.MediaUrl is null) { return; }
+        _chatBusy = true;
+        try
+        {
+            var b64 = await ReadLocalBase64Async(t.MediaUrl);
+            if (b64 is null) { _chatError = "No se encontro el archivo del pregrabado."; return; }
+            var actor = await ActorAsync();
+            var caption = FillTemplate(t.Body);
+            var r = await ChatSvc.SendMediaViaLineAsync(_conversation.Id, _chatLineId, t.MediaType, b64, t.MediaUrl, t.MediaMimeType, System.IO.Path.GetFileName(t.MediaUrl), caption, actor);
+            if (!r.Ok) { _chatError = r.Error; return; }
+            if (r.Message is not null) { _messages.Add(r.Message); }
+        }
+        finally { _chatBusy = false; }
+    }
+
+    private async Task OnAttachAsync(InputFileChangeEventArgs e, MessageMediaType type)
+    {
+        _attachOpen = false;
+        _chatError = null;
+        if (_conversation is null || _chatLineId == Guid.Empty) { return; }
+        var saved = await SaveChatFileAsync(e.File, type);
+        if (saved is null) { _chatError = "Archivo invalido o supera 16 MB."; return; }
+        _chatBusy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var caption = string.IsNullOrWhiteSpace(_chatDraft) ? null : _chatDraft!.Trim();
+            var r = await ChatSvc.SendMediaViaLineAsync(_conversation.Id, _chatLineId, type, saved.Value.Base64, saved.Value.Url, saved.Value.Mime, saved.Value.Name, caption, actor);
+            if (!r.Ok) { _chatError = r.Error; return; }
+            if (r.Message is not null) { _messages.Add(r.Message); }
+            _chatDraft = null;
+        }
+        finally { _chatBusy = false; }
+    }
+
+    private void OpenLocation()
+    {
+        _attachOpen = false;
+        _locName = null; _locLat = null; _locLng = null; _locError = null;
+        _locationOpen = true;
+    }
+
+    private async Task SendLocationAsync()
+    {
+        _locError = null;
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        if (!double.TryParse(_locLat, System.Globalization.NumberStyles.Any, ci, out var lat)
+            || !double.TryParse(_locLng, System.Globalization.NumberStyles.Any, ci, out var lng))
+        {
+            _locError = "Latitud y longitud invalidas.";
+            return;
+        }
+        if (_conversation is null || _chatLineId == Guid.Empty) { _locError = "Selecciona una linea."; return; }
+        _chatBusy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var r = await ChatSvc.SendLocationViaLineAsync(_conversation.Id, _chatLineId, lat, lng, _locName, actor);
+            if (!r.Ok) { _locError = r.Error; return; }
+            if (r.Message is not null) { _messages.Add(r.Message); }
+            _locationOpen = false;
+        }
+        finally { _chatBusy = false; }
+    }
+
+    // ===== Gestor de pregrabados =====
+    private void OpenTemplateManager()
+    {
+        _attachOpen = false;
+        ResetTemplateForm();
+        _tplFormCategory = _qrCategory;
+        _tplManagerOpen = true;
+    }
+
+    private void EditTemplate(MessageTemplateDto t)
+    {
+        _tplEditId = t.Id;
+        _tplFormCategory = t.Category;
+        _tplFormBody = t.Body;
+        _tplFormMediaType = t.MediaType;
+        _tplFormMediaUrl = t.MediaUrl;
+        _tplFormMediaMime = t.MediaMimeType;
+        _tplFormError = null;
+    }
+
+    private void ResetTemplateForm()
+    {
+        _tplEditId = null;
+        _tplFormBody = null;
+        _tplFormMediaType = MessageMediaType.None;
+        _tplFormMediaUrl = null;
+        _tplFormMediaMime = null;
+        _tplFormError = null;
+    }
+
+    private void ClearTemplateMedia()
+    {
+        _tplFormMediaType = MessageMediaType.None;
+        _tplFormMediaUrl = null;
+        _tplFormMediaMime = null;
+    }
+
+    private async Task OnTemplateMediaAsync(InputFileChangeEventArgs e)
+    {
+        _tplFormError = null;
+        var mime = e.File.ContentType ?? "";
+        var type = mime.StartsWith("image") ? MessageMediaType.Image
+            : mime.StartsWith("video") ? MessageMediaType.Video
+            : mime.StartsWith("audio") ? MessageMediaType.Audio
+            : MessageMediaType.Document;
+        var saved = await SaveChatFileAsync(e.File, type);
+        if (saved is null) { _tplFormError = "Archivo invalido o supera 16 MB."; return; }
+        _tplFormMediaType = type;
+        _tplFormMediaUrl = saved.Value.Url;
+        _tplFormMediaMime = saved.Value.Mime;
+    }
+
+    private async Task SaveTemplateAsync()
+    {
+        _tplFormError = null;
+        if (string.IsNullOrWhiteSpace(_tplFormBody) && _tplFormMediaUrl is null)
+        {
+            _tplFormError = "Escribe un mensaje o adjunta un archivo.";
+            return;
+        }
+        _tplBusy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            if (_tplEditId is null)
+            {
+                await TemplatesSvc.CreateAsync(new CreateMessageTemplateRequest(_tplFormCategory, _tplFormBody ?? "", _tplFormMediaType, _tplFormMediaUrl, _tplFormMediaMime), actor);
+            }
+            else
+            {
+                await TemplatesSvc.UpdateAsync(_tplEditId.Value, new UpdateMessageTemplateRequest(_tplFormCategory, _tplFormBody ?? "", _tplFormMediaType, _tplFormMediaUrl, _tplFormMediaMime), actor);
+            }
+            _templates = (await TemplatesSvc.ListAsync()).ToList();
+            ResetTemplateForm();
+        }
+        finally { _tplBusy = false; }
+    }
+
+    private async Task DeleteTemplateAsync(Guid id)
+    {
+        _tplBusy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await TemplatesSvc.DeleteAsync(id, actor);
+            _templates = (await TemplatesSvc.ListAsync()).ToList();
+            if (_tplEditId == id) { ResetTemplateForm(); }
+        }
+        finally { _tplBusy = false; }
+    }
+
+    // Guarda el archivo en wwwroot/uploads/chat y devuelve url local + base64 para Evolution.
+    private async Task<(string Url, string Base64, string Mime, string Name)?> SaveChatFileAsync(IBrowserFile file, MessageMediaType type)
+    {
+        const long max = 16L * 1024 * 1024;
+        if (file.Size <= 0 || file.Size > max) { return null; }
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(max).CopyToAsync(ms);
+        var bytes = ms.ToArray();
+        var ext = System.IO.Path.GetExtension(file.Name);
+        if (string.IsNullOrWhiteSpace(ext))
+        {
+            ext = type switch
+            {
+                MessageMediaType.Image => ".jpg",
+                MessageMediaType.Video => ".mp4",
+                MessageMediaType.Audio => ".ogg",
+                _ => ".bin"
+            };
+        }
+        var dir = System.IO.Path.Combine(Env.WebRootPath, "uploads", "chat");
+        System.IO.Directory.CreateDirectory(dir);
+        var name = $"chat-{Guid.NewGuid():N}{ext}";
+        await System.IO.File.WriteAllBytesAsync(System.IO.Path.Combine(dir, name), bytes);
+        var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType;
+        return ($"/uploads/chat/{name}", Convert.ToBase64String(bytes), mime, file.Name);
+    }
+
+    private async Task<string?> ReadLocalBase64Async(string localUrl)
+    {
+        var rel = localUrl.TrimStart('/').Replace('/', System.IO.Path.DirectorySeparatorChar);
+        var path = System.IO.Path.Combine(Env.WebRootPath, rel);
+        if (!System.IO.File.Exists(path)) { return null; }
+        return Convert.ToBase64String(await System.IO.File.ReadAllBytesAsync(path));
+    }
+
     // Configuracion
     private bool _configOpen;
     private string? _newStageName;
@@ -518,11 +1217,13 @@ else
             var state = await AuthState;
             var role = state.User.FindFirst("tenant_role")?.Value;
             _canManage = role is "Owner" or "Admin" or "Supervisor";
+            _tenantId = state.User.FindFirst("tenant_id")?.Value;
         }
         var actor = await ActorAsync();
         await PipelineSvc.EnsureDefaultsAsync(actor);
         await ReloadAsync();
         _loading = false;
+        await EnsureHubAsync();
     }
 
     private async Task ReloadAsync()
@@ -532,6 +1233,7 @@ else
         _leads = (await LeadsSvc.ListAsync()).ToList();
         _team = (await UsersSvc.ListAsync()).ToList();
         _userEmails = _team.ToDictionary(u => u.Id, u => u.Email);
+        _pending = await ChatSvc.GetUnansweredByPhoneAsync();
         if (_cfgStageId == Guid.Empty && _stages.Count > 0)
         {
             _cfgStageId = _stages[0].Id;
@@ -553,6 +1255,11 @@ else
             _selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("cubotPipeline.init", _selfRef);
         }
+        if (_scrollChatPending)
+        {
+            _scrollChatPending = false;
+            try { await JS.InvokeVoidAsync("cubotScrollChat"); } catch { }
+        }
     }
 
     [JSInvokable]
@@ -572,7 +1279,14 @@ else
         }
     }
 
-    public void Dispose() => _selfRef?.Dispose();
+    public void Dispose()
+    {
+        _selfRef?.Dispose();
+        if (_hub is not null)
+        {
+            _ = _hub.DisposeAsync();
+        }
+    }
 
     // ===== Nuevo lead =====
     private void OpenNewLead(Guid? stageId)
@@ -634,12 +1348,147 @@ else
             _editValues[f.FieldKey] = detail.Lead.FieldValues.TryGetValue(f.FieldKey, out var v) ? v : null;
         }
         _leadOpen = true;
+        await LoadChatAsync(leadId);
+    }
+
+    private async Task LoadChatAsync(Guid leadId)
+    {
+        _conversation = null;
+        _messages = new();
+        _chatLines = new();
+        _chatError = null;
+        _chatDraft = null;
+        _qrCategory = "saludo";
+
+        if (string.IsNullOrWhiteSpace(_el.ContactPhone)) { return; }
+
+        var lines = await LinesSvc.ListAsync();
+        _chatLines = lines.Where(l => l.Status == WhatsAppLineStatus.Connected).ToList();
+        if (_chatLines.Count == 0) { return; }
+
+        _conversation = await ChatSvc.GetOrCreateForLeadAsync(leadId);
+        if (_conversation is null) { return; }
+
+        _messages = (await ChatSvc.ListMessagesAsync(_conversation.Id)).ToList();
+        _scrollChatPending = true;
+        var preferred = _conversation.WhatsAppLineId is Guid lid && _chatLines.Any(l => l.Id == lid)
+            ? lid
+            : _chatLines[0].Id;
+        _chatLineId = preferred;
+
+        await TemplatesSvc.SeedDefaultsAsync();
+        _templates = (await TemplatesSvc.ListAsync()).ToList();
+
+        await JoinConversationRealtimeAsync(_conversation.Id);
+    }
+
+    private async Task EnsureHubAsync()
+    {
+        if (_hub is not null) { return; }
+        try
+        {
+            _hub = new HubConnectionBuilder()
+                .WithUrl(Nav.ToAbsoluteUri("/hubs/chat"))
+                .WithAutomaticReconnect()
+                .Build();
+
+            _hub.On<MessageDto>("MessageAdded", async msg =>
+            {
+                if (_conversation is null || msg.ConversationId != _conversation.Id) { return; }
+                if (_messages.Any(m => m.Id == msg.Id)) { return; }
+                _messages.Add(msg);
+                _scrollChatPending = true;
+                await InvokeAsync(StateHasChanged);
+            });
+
+            // Cualquier mensaje del tenant: recalcular el estado "sin responder" del tablero.
+            _hub.On("BoardChanged", async () =>
+            {
+                _pending = await ChatSvc.GetUnansweredByPhoneAsync();
+                await InvokeAsync(StateHasChanged);
+            });
+
+            await _hub.StartAsync();
+            if (!string.IsNullOrEmpty(_tenantId))
+            {
+                await _hub.SendAsync("JoinTenant", _tenantId);
+            }
+        }
+        catch
+        {
+            // El tiempo real es un complemento; si falla la conexion el tablero sigue funcionando.
+        }
+    }
+
+    private async Task JoinConversationRealtimeAsync(Guid conversationId)
+    {
+        await EnsureHubAsync();
+        if (_hub is null) { return; }
+        try
+        {
+            if (_joinedConversation is not null && _joinedConversation != conversationId.ToString())
+            {
+                await _hub.SendAsync("LeaveConversation", _joinedConversation);
+            }
+            await _hub.SendAsync("JoinConversation", conversationId.ToString());
+            _joinedConversation = conversationId.ToString();
+        }
+        catch { }
+    }
+
+
+    private async Task ChatKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendChatAsync();
+        }
+    }
+
+    private async Task SendChatAsync()
+    {
+        _chatError = null;
+        if (_conversation is null || string.IsNullOrWhiteSpace(_chatDraft) || _chatLineId == Guid.Empty) { return; }
+        _chatBusy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var result = await ChatSvc.SendViaLineAsync(_conversation.Id, _chatLineId, _chatDraft!.Trim(), actor);
+            if (!result.Ok)
+            {
+                _chatError = result.Error ?? "No se pudo enviar el mensaje.";
+                return;
+            }
+            if (result.Message is not null)
+            {
+                _messages.Add(result.Message);
+            }
+            _chatDraft = null;
+        }
+        finally
+        {
+            _chatBusy = false;
+        }
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) { return "?"; }
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1
+            ? parts[0][..1].ToUpperInvariant()
+            : (parts[0][..1] + parts[^1][..1]).ToUpperInvariant();
     }
 
     private void CloseLead()
     {
         _leadOpen = false;
         _editLead = null;
+        _conversation = null;
+        _messages = new();
+        _chatLines = new();
+        _chatDraft = null;
+        _chatError = null;
     }
 
     private async Task SaveLeadAsync()
@@ -923,6 +1772,110 @@ else
         if (d > 0) { return h > 0 ? $"{d}d {h}h" : $"{d}d"; }
         if (h > 0) { return $"{h}h"; }
         return "Nuevo";
+    }
+
+    private string CardCss(LeadDto l, LeadChatStateDto? pend)
+    {
+        var c = "kb-card";
+        if (IsStale(l)) { c += " stale"; }
+        if (pend is not null) { c += " needsreply"; }
+        return c;
+    }
+
+    // ===== Busqueda, orden y filtros =====
+    private bool FiltersActive => _filterAsesores.Count > 0 || _filterStages.Count > 0 || _filterValue.Count > 0 || _filterDestinos.Count > 0 || _onlyUnanswered;
+    private int ActiveFilterCount => _filterAsesores.Count + _filterStages.Count + _filterValue.Count + _filterDestinos.Count + (_onlyUnanswered ? 1 : 0);
+
+    private void ClearFilters()
+    {
+        _filterAsesores.Clear();
+        _filterStages.Clear();
+        _filterValue.Clear();
+        _filterDestinos.Clear();
+        _onlyUnanswered = false;
+    }
+    private void ToggleAsesor(Guid id) { if (!_filterAsesores.Add(id)) { _filterAsesores.Remove(id); } }
+    private void ToggleStage(Guid id) { if (!_filterStages.Add(id)) { _filterStages.Remove(id); } }
+    private void ToggleValue(string k) { if (!_filterValue.Add(k)) { _filterValue.Remove(k); } }
+    private void ToggleDestino(string d) { if (!_filterDestinos.Add(d)) { _filterDestinos.Remove(d); } }
+
+    private List<string> DistinctDestinations() =>
+        _leads.Where(l => !string.IsNullOrWhiteSpace(l.Destination))
+            .Select(l => l.Destination!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    private static string FirstName(string label)
+    {
+        var n = label.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return n.Length > 0 ? n[0] : label;
+    }
+
+    private List<LeadDto> VisibleLeads(Guid stageId)
+    {
+        IEnumerable<LeadDto> q = _leads.Where(l => l.StageId == stageId);
+
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(l => (l.ContactName?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                          || (l.Destination?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+        if (_filterAsesores.Count > 0)
+        {
+            q = q.Where(l => l.AssignedToTenantUserId is Guid id && _filterAsesores.Contains(id));
+        }
+        if (_filterDestinos.Count > 0)
+        {
+            q = q.Where(l => l.Destination is not null && _filterDestinos.Contains(l.Destination.Trim()));
+        }
+        if (_onlyUnanswered)
+        {
+            q = q.Where(l => PendingFor(l) is not null);
+        }
+        if (_filterValue.Count > 0)
+        {
+            q = q.Where(MatchesValue);
+        }
+
+        q = _sortBy switch
+        {
+            "name" => q.OrderBy(l => l.ContactName, StringComparer.OrdinalIgnoreCase),
+            "unanswered" => q.OrderByDescending(l => PendingFor(l)?.UnansweredCount ?? 0).ThenBy(l => l.StageChangedAt),
+            _ => q.OrderBy(l => l.StageChangedAt) // tiempo en columna: el que mas lleva, primero
+        };
+        return q.ToList();
+    }
+
+    private bool MatchesValue(LeadDto l)
+    {
+        var v = l.EstimatedValue ?? 0m;
+        foreach (var k in _filterValue)
+        {
+            if (k == "lt2" && v < 2_000_000m) { return true; }
+            if (k == "2to5" && v >= 2_000_000m && v <= 5_000_000m) { return true; }
+            if (k == "gt5" && v > 5_000_000m) { return true; }
+        }
+        return false;
+    }
+
+    // Estado "sin responder" del chat (mensajes entrantes tras la ultima respuesta).
+    private LeadChatStateDto? PendingFor(LeadDto l)
+    {
+        if (string.IsNullOrWhiteSpace(l.ContactPhone)) { return null; }
+        var key = new string(l.ContactPhone.Where(char.IsDigit).ToArray());
+        return _pending.TryGetValue(key, out var st) ? st : null;
+    }
+
+    private string WaitingLabel(DateTimeOffset since)
+    {
+        var span = DateTimeOffset.UtcNow - since;
+        var d = (int)span.TotalDays;
+        var h = span.Hours;
+        var m = span.Minutes;
+        if (d > 0) { return h > 0 ? $"{d}d {h}h sin responder" : $"{d}d sin responder"; }
+        if (h > 0) { return $"{h}h sin responder"; }
+        return $"{Math.Max(m, 1)}m sin responder";
     }
 
     // Senal de atencion por tiempo en la etapa (proxy de "sin responder" hasta enlazar el chat).

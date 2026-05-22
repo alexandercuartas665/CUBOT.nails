@@ -14,4 +14,7 @@ public enum ChatIngestResult
 public interface IChatIngestService
 {
     Task<ChatIngestResult> IngestAsync(Guid tenantId, string? providedToken, IngestMessageRequest payload, CancellationToken cancellationToken = default);
+
+    /// <summary>Persiste un entrante ya autorizado por el llamador (webhook crudo validado con token global + instancia conocida).</summary>
+    Task<ChatIngestResult> IngestTrustedAsync(Guid tenantId, IngestMessageRequest payload, CancellationToken cancellationToken = default);
 }

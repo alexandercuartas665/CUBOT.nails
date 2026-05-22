@@ -107,6 +107,13 @@ public sealed class WhatsAppConnectorService : IWhatsAppConnectorService
             previousValue: null, newValue: new { instance = EvoInstance(line) }, tenantId: line.TenantId);
         await _db.SaveChangesAsync(cancellationToken);
 
+        // Configura el webhook entrante para recibir mensajes en caliente (si esta configurado).
+        var (webhookUrl, webhookToken) = await EffectiveWebhookAsync(cancellationToken);
+        if (webhookUrl is not null && webhookToken is not null)
+        {
+            await _client.SetWebhookAsync(baseUrl, apiKey, EvoInstance(line), webhookUrl, webhookToken, cancellationToken);
+        }
+
         return new LineConnectResult(true, result.QrBase64, null);
     }
 
@@ -168,6 +175,31 @@ public sealed class WhatsAppConnectorService : IWhatsAppConnectorService
         return true;
     }
 
+    public async Task<bool> DeleteLineAsync(Guid lineId, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var line = await _db.WhatsAppLines.FirstOrDefaultAsync(l => l.Id == lineId, cancellationToken);
+        if (line is null)
+        {
+            return false;
+        }
+
+        // Borra la instancia en Evolution (best-effort) antes de quitar la fila.
+        var server = await ResolveServerAsync(cancellationToken);
+        if (server is not null)
+        {
+            var (baseUrl, apiKey) = server.Value;
+            try { await _client.DeleteInstanceAsync(baseUrl, apiKey, EvoInstance(line), cancellationToken); }
+            catch { /* la instancia puede no existir */ }
+        }
+
+        _audit.Write(actorUserId, "whatsapp-line.delete", nameof(WhatsAppLine), line.Id,
+            previousValue: new { line.InstanceName, line.Status }, newValue: null, tenantId: line.TenantId);
+
+        _db.WhatsAppLines.Remove(line);
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<LineSendResult> SendTestAsync(Guid lineId, string phone, string text, Guid actorUserId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(phone) || string.IsNullOrWhiteSpace(text))
@@ -197,6 +229,76 @@ public sealed class WhatsAppConnectorService : IWhatsAppConnectorService
             previousValue: null, newValue: new { to = digits, ok = result.Ok }, tenantId: line.TenantId);
 
         return new LineSendResult(result.Ok, result.Error);
+    }
+
+    public async Task<LineSendResult> SendMediaAsync(Guid lineId, string phone, MessageMediaType mediaType, string base64, string? mimeType, string? fileName, string? caption, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var ready = await ReadyLineAsync(lineId, phone, cancellationToken);
+        if (ready.Error is not null) { return new LineSendResult(false, ready.Error); }
+        var (baseUrl, apiKey, instance, digits) = ready.Value;
+
+        var result = mediaType switch
+        {
+            MessageMediaType.Audio => await _client.SendAudioAsync(baseUrl, apiKey, instance, digits, base64, cancellationToken),
+            MessageMediaType.Image => await _client.SendMediaAsync(baseUrl, apiKey, instance, digits, "image", base64, mimeType, fileName, caption, cancellationToken),
+            MessageMediaType.Video => await _client.SendMediaAsync(baseUrl, apiKey, instance, digits, "video", base64, mimeType, fileName, caption, cancellationToken),
+            MessageMediaType.Document => await _client.SendMediaAsync(baseUrl, apiKey, instance, digits, "document", base64, mimeType, fileName, caption, cancellationToken),
+            _ => new EvolutionSendResult(false, "Tipo de adjunto no soportado.")
+        };
+        return new LineSendResult(result.Ok, result.Error);
+    }
+
+    public async Task<LineSendResult> SendLocationAsync(Guid lineId, string phone, double latitude, double longitude, string? name, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var ready = await ReadyLineAsync(lineId, phone, cancellationToken);
+        if (ready.Error is not null) { return new LineSendResult(false, ready.Error); }
+        var (baseUrl, apiKey, instance, digits) = ready.Value;
+        var result = await _client.SendLocationAsync(baseUrl, apiKey, instance, digits, latitude, longitude, name, null, cancellationToken);
+        return new LineSendResult(result.Ok, result.Error);
+    }
+
+    // Resuelve linea conectada + servidor + numero normalizado. Error no nulo si algo falta.
+    private async Task<(string Error, (string baseUrl, string apiKey, string instance, string digits) Value)> ReadyLineAsync(Guid lineId, string phone, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) { return ("Indica el numero.", default); }
+        var line = await _db.WhatsAppLines.FirstOrDefaultAsync(l => l.Id == lineId, ct);
+        if (line is null) { return ("La linea no existe.", default); }
+        if (line.Status != WhatsAppLineStatus.Connected) { return ("La linea no esta conectada.", default); }
+        var server = await ResolveServerAsync(ct);
+        if (server is null) { return ("No hay servidor Evolution configurado.", default); }
+        var (baseUrl, apiKey) = server.Value;
+        var digits = new string(phone.Where(char.IsDigit).ToArray());
+        return (null!, (baseUrl, apiKey, EvoInstance(line), digits));
+    }
+
+    public async Task<int> ApplyWebhookToConnectedLinesAsync(Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var (webhookUrl, webhookToken) = await EffectiveWebhookAsync(cancellationToken);
+        if (webhookUrl is null || webhookToken is null) { return 0; }
+        var server = await ResolveServerAsync(cancellationToken);
+        if (server is null) { return 0; }
+        var (baseUrl, apiKey) = server.Value;
+
+        var lines = await _db.WhatsAppLines.Where(l => l.Status == WhatsAppLineStatus.Connected).ToListAsync(cancellationToken);
+        var applied = 0;
+        foreach (var line in lines)
+        {
+            var res = await _client.SetWebhookAsync(baseUrl, apiKey, EvoInstance(line), webhookUrl, webhookToken, cancellationToken);
+            if (res.Ok) { applied++; }
+        }
+        return applied;
+    }
+
+    // URL + token efectivos del webhook segun el modo configurado (dev usa la URL activa del tunel).
+    private async Task<(string? Url, string? Token)> EffectiveWebhookAsync(CancellationToken ct)
+    {
+        var master = await _db.EvolutionMasterConfigs.AsNoTracking().FirstOrDefaultAsync(ct);
+        if (master is null || string.IsNullOrWhiteSpace(master.WebhookToken)) { return (null, null); }
+        var baseUrl = string.Equals(master.WebhookMode, "Production", StringComparison.OrdinalIgnoreCase)
+            ? master.WebhookPublicUrl
+            : master.WebhookActiveUrl;
+        if (string.IsNullOrWhiteSpace(baseUrl)) { return (null, null); }
+        return ($"{baseUrl!.TrimEnd('/')}/webhooks/evolution", master.WebhookToken);
     }
 
     // Servidor efectivo (URL + API key descifrada) segun la eleccion del tenant.

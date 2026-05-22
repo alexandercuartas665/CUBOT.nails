@@ -18,4 +18,17 @@ public class EvolutionMasterConfig : BaseEntity
 
     public EvolutionIntegrationStatus Status { get; set; } = EvolutionIntegrationStatus.NotConfigured;
     public DateTimeOffset? LastValidatedAt { get; set; }
+
+    // ===== Webhook entrante (mensajes en caliente) =====
+    /// <summary>Modo del webhook: "Development" (tunel local) o "Production" (URL fija del dominio).</summary>
+    public string WebhookMode { get; set; } = "Development";
+
+    /// <summary>URL publica fija para produccion (p.ej. https://app.cubot.com.co).</summary>
+    public string? WebhookPublicUrl { get; set; }
+
+    /// <summary>URL publica activa en modo desarrollo (la fija el tunel al iniciarse).</summary>
+    public string? WebhookActiveUrl { get; set; }
+
+    /// <summary>Token compartido que valida los webhooks entrantes de Evolution.</summary>
+    public string? WebhookToken { get; set; }
 }

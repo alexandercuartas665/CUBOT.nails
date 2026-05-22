@@ -128,6 +128,69 @@ public sealed class EvolutionApiClient : IEvolutionApiClient
         }
     }
 
+    public async Task<EvolutionSendResult> SendMediaAsync(string baseUrl, string apiKey, string instanceName, string phone, string mediatype, string base64, string? mimeType, string? fileName, string? caption, CancellationToken cancellationToken = default)
+    {
+        // Evolution exige que mimetype/caption sean string si estan presentes: omitimos los nulos.
+        var body = new Dictionary<string, object>
+        {
+            ["number"] = phone,
+            ["mediatype"] = mediatype,
+            ["media"] = base64,
+            ["fileName"] = fileName ?? "archivo"
+        };
+        if (!string.IsNullOrWhiteSpace(mimeType)) { body["mimetype"] = mimeType!; }
+        if (!string.IsNullOrWhiteSpace(caption)) { body["caption"] = caption!; }
+        return await PostSendAsync(baseUrl, apiKey, $"/message/sendMedia/{Uri.EscapeDataString(instanceName)}", body, cancellationToken);
+    }
+
+    public async Task<EvolutionSendResult> SendAudioAsync(string baseUrl, string apiKey, string instanceName, string phone, string base64, CancellationToken cancellationToken = default)
+    {
+        var body = new { number = phone, audio = base64 };
+        return await PostSendAsync(baseUrl, apiKey, $"/message/sendWhatsAppAudio/{Uri.EscapeDataString(instanceName)}", body, cancellationToken);
+    }
+
+    public async Task<EvolutionSendResult> SendLocationAsync(string baseUrl, string apiKey, string instanceName, string phone, double latitude, double longitude, string? name, string? address, CancellationToken cancellationToken = default)
+    {
+        var body = new { number = phone, name = name ?? "", address = address ?? "", latitude, longitude };
+        return await PostSendAsync(baseUrl, apiKey, $"/message/sendLocation/{Uri.EscapeDataString(instanceName)}", body, cancellationToken);
+    }
+
+    public async Task<EvolutionSendResult> SetWebhookAsync(string baseUrl, string apiKey, string instanceName, string webhookUrl, string token, CancellationToken cancellationToken = default)
+    {
+        var body = new
+        {
+            webhook = new
+            {
+                enabled = true,
+                url = webhookUrl,
+                headers = new Dictionary<string, string>
+                {
+                    ["x-webhook-token"] = token,
+                    ["Content-Type"] = "application/json"
+                },
+                byEvents = false,
+                base64 = false,
+                events = new[] { "MESSAGES_UPSERT" }
+            }
+        };
+        return await PostSendAsync(baseUrl, apiKey, $"/webhook/set/{Uri.EscapeDataString(instanceName)}", body, cancellationToken);
+    }
+
+    private async Task<EvolutionSendResult> PostSendAsync(string baseUrl, string apiKey, string path, object body, CancellationToken ct)
+    {
+        try
+        {
+            using var resp = await SendAsync(HttpMethod.Post, baseUrl, path, apiKey, JsonContent.Create(body), ct);
+            if (resp.IsSuccessStatusCode) { return new EvolutionSendResult(true, null); }
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            return new EvolutionSendResult(false, $"HTTP {(int)resp.StatusCode}: {Trim(json)}");
+        }
+        catch (Exception ex)
+        {
+            return new EvolutionSendResult(false, ex.Message);
+        }
+    }
+
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string baseUrl, string path, string apiKey, HttpContent? content, CancellationToken ct)
     {
         var url = $"{baseUrl.TrimEnd('/')}{path}";

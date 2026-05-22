@@ -46,6 +46,10 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
     public DbSet<FollowUpTask> FollowUpTasks => Set<FollowUpTask>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<MessageTemplate> MessageTemplates => Set<MessageTemplate>();
+    public DbSet<AiAgent> AiAgents => Set<AiAgent>();
+    public DbSet<AiAgentResource> AiAgentResources => Set<AiAgentResource>();
+    public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -65,6 +69,11 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
         configurationBuilder.Properties<LeadStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<FollowUpTaskStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<MessageDirection>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<MessageMediaType>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<AiProvider>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<AgentResourceType>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<AutomationTrigger>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<AutomationAction>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<WompiEnvironment>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<WompiIntegrationStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<EvolutionIntegrationStatus>().HaveConversion<string>().HaveMaxLength(40);
@@ -160,6 +169,10 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
         modelBuilder.Entity<EvolutionMasterConfig>(b =>
         {
             b.Property(x => x.BaseUrl).HasMaxLength(500);
+            b.Property(x => x.WebhookMode).HasMaxLength(20).HasDefaultValue("Development");
+            b.Property(x => x.WebhookPublicUrl).HasMaxLength(500);
+            b.Property(x => x.WebhookActiveUrl).HasMaxLength(500);
+            b.Property(x => x.WebhookToken).HasMaxLength(200);
         });
 
         modelBuilder.Entity<WompiWebhookEvent>(b =>
@@ -264,13 +277,55 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
 
         modelBuilder.Entity<Message>(b =>
         {
-            b.Property(x => x.Body).HasMaxLength(4000).IsRequired();
+            b.Property(x => x.Body).HasMaxLength(4000);
             b.Property(x => x.MessageType).HasMaxLength(40).IsRequired();
             b.Property(x => x.ExternalId).HasMaxLength(200);
+            b.Property(x => x.MediaUrl).HasMaxLength(500);
+            b.Property(x => x.MediaMimeType).HasMaxLength(120);
+            b.Property(x => x.SentByName).HasMaxLength(200);
             b.HasOne(x => x.Conversation).WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.ConversationId });
             // Idempotencia de ingesta: un mensaje externo no se inserta dos veces.
             b.HasIndex(x => new { x.TenantId, x.ExternalId }).IsUnique().HasFilter("external_id IS NOT NULL");
+        });
+
+        modelBuilder.Entity<MessageTemplate>(b =>
+        {
+            b.Property(x => x.Category).HasMaxLength(40).IsRequired();
+            b.Property(x => x.Body).HasMaxLength(4000);
+            b.Property(x => x.MediaUrl).HasMaxLength(500);
+            b.Property(x => x.MediaMimeType).HasMaxLength(120);
+            b.HasIndex(x => new { x.TenantId, x.Category, x.SortOrder });
+        });
+
+        modelBuilder.Entity<AiAgent>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            b.Property(x => x.Role).HasMaxLength(100);
+            b.Property(x => x.Model).HasMaxLength(100);
+            b.Property(x => x.SystemPrompt).HasColumnType("text");
+            b.HasIndex(x => new { x.TenantId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<AiAgentResource>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            b.Property(x => x.Detail).HasColumnType("text");
+            b.Property(x => x.FileUrl).HasMaxLength(500);
+            b.Property(x => x.FileName).HasMaxLength(255);
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.AgentId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<AutomationRule>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            b.Property(x => x.FollowUpTitle).HasMaxLength(200);
+            b.Property(x => x.TimeWindowStart).HasMaxLength(5);
+            b.Property(x => x.TimeWindowEnd).HasMaxLength(5);
+            b.Property(x => x.TemplateCategory).HasMaxLength(40);
+            b.Property(x => x.ShiftName).HasMaxLength(60);
+            b.HasIndex(x => new { x.TenantId, x.SortOrder });
         });
     }
 

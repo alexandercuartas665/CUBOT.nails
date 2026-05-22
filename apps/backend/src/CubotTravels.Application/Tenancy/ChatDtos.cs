@@ -7,7 +7,8 @@ public sealed record ConversationDto(
     string ContactPhone,
     string? ContactName,
     Guid? LeadId,
-    DateTimeOffset? LastMessageAt);
+    DateTimeOffset? LastMessageAt,
+    Guid? WhatsAppLineId = null);
 
 public sealed record MessageDto(
     Guid Id,
@@ -15,7 +16,11 @@ public sealed record MessageDto(
     MessageDirection Direction,
     string Body,
     string MessageType,
-    DateTimeOffset SentAt);
+    DateTimeOffset SentAt,
+    MessageMediaType MediaType = MessageMediaType.None,
+    string? MediaUrl = null,
+    string? MediaMimeType = null,
+    string? SentByName = null);
 
 /// <summary>Payload normalizado del webhook entrante (lo produce el Evolution Connector).</summary>
 public sealed record IngestMessageRequest(
@@ -27,3 +32,9 @@ public sealed record IngestMessageRequest(
     DateTimeOffset? SentAt = null);
 
 public sealed record SendMessageRequest(string Body);
+
+/// <summary>Resultado de enviar un mensaje por una linea WhatsApp (Evolution real).</summary>
+public sealed record ChatSendResult(bool Ok, MessageDto? Message, string? Error);
+
+/// <summary>Estado "sin responder" de una conversacion: mensajes entrantes tras la ultima respuesta y desde cuando espera.</summary>
+public sealed record LeadChatStateDto(int UnansweredCount, DateTimeOffset WaitingSince);

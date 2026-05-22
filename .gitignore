@@ -62,3 +62,9 @@ deploy/docker/postgres-data/
 deploy/docker/rabbitmq-data/
 deploy/docker/redis-data/
 deploy/docker/pgadmin-data/
+
+# Archivos subidos en tiempo de ejecucion (logos, avatares, media de chat/agentes)
+apps/backend/src/CubotTravels.SuperAdmin/wwwroot/uploads/
+
+# Binarios/herramientas locales (cloudflared para el tunel de desarrollo)
+tools/
