@@ -9,6 +9,7 @@ using CubotTravels.SuperAdmin.Auth;
 using CubotTravels.SuperAdmin.Components;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -46,10 +47,32 @@ builder.Services.AddSingleton<CubotTravels.Application.Tenancy.IDevTunnel, Cubot
 
 var app = builder.Build();
 
+// Detras del proxy de Railway (TLS en el borde, HTTP al contenedor): leer
+// X-Forwarded-Proto/For para que Request.Scheme sea "https". Asi las cookies
+// seguras del login y UseHttpsRedirection funcionan sin bucles de redireccion.
+// Debe ir lo antes posible en el pipeline.
+var forwardedOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedOptions.KnownNetworks.Clear();
+forwardedOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedOptions);
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
+
+    // En produccion las migraciones NO se aplican solas. Si CUBOT_RUN_MIGRATIONS=true
+    // (variable de Railway), aplicar las migraciones pendientes al arrancar. Es seguro
+    // con una sola instancia web; el seed de demo no corre en produccion.
+    if (string.Equals(Environment.GetEnvironmentVariable("CUBOT_RUN_MIGRATIONS"), "true", StringComparison.OrdinalIgnoreCase))
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CubotTravelsDbContext>();
+        await db.Database.MigrateAsync();
+    }
 }
 else
 {
