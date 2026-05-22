@@ -109,24 +109,19 @@ public sealed class AiInferenceService : IAiInferenceService
         {
             sb.AppendLine();
             sb.AppendLine();
-            sb.AppendLine("Recursos disponibles. Los de tipo Texto contienen informacion que puedes usar al responder. Los de tipo Image/Video/Pdf/Audio/Location son archivos que puedes ENTREGAR al cliente: para enviar uno, incluye en tu respuesta el marcador [[enviar: Nombre exacto del recurso]] (el sistema adjuntara el archivo; no describas la URL).");
+            sb.AppendLine("Recursos disponibles. REGLA IMPORTANTE: cuando vayas a comunicar el contenido de un recurso (precios, politicas, textos, imagenes, videos, PDF, ubicacion), NO lo reescribas ni lo resumas: entregalo EXACTO incluyendo en tu respuesta el marcador [[enviar: Nombre exacto del recurso]]. El sistema agregara el contenido o el archivo tal cual. Puedes acompanarlo con una frase breve, pero el contenido del recurso lo entrega el marcador.");
             foreach (var r in resources)
             {
-                if (r.ResourceType == AgentResourceType.Text)
-                {
-                    sb.AppendLine($"- (Texto) {r.Name}: {r.Detail}");
-                }
-                else
-                {
-                    sb.AppendLine($"- ({r.ResourceType}) {r.Name}: {(string.IsNullOrWhiteSpace(r.Detail) ? "archivo" : r.Detail)}  -> para enviarlo: [[enviar: {r.Name}]]");
-                }
+                var kind = r.ResourceType == AgentResourceType.Text ? "Texto" : r.ResourceType.ToString();
+                var desc = string.IsNullOrWhiteSpace(r.Detail) ? "archivo" : r.Detail;
+                sb.AppendLine($"- ({kind}) {r.Name}: {desc}  -> entregar con [[enviar: {r.Name}]]");
             }
         }
 
         return sb.ToString();
     }
 
-    // Reemplaza {{nombre}} por el contenido del recurso (texto) o por la instruccion de envio (media).
+    // Reemplaza {{nombre}} por la instruccion de entregar ese recurso de forma EXACTA (sin degradarlo).
     private static string ExpandResourceRefs(string text, IReadOnlyList<AiChatAttachment> resources)
     {
         if (string.IsNullOrEmpty(text) || !text.Contains("{{")) { return text; }
@@ -134,9 +129,7 @@ public sealed class AiInferenceService : IAiInferenceService
         {
             var res = FindResource(resources, m.Groups[1].Value);
             if (res is null) { return m.Value; }
-            return res.ResourceType == AgentResourceType.Text
-                ? (res.Detail ?? "")
-                : $"el recurso \"{res.Name}\" (para entregarlo incluye [[enviar: {res.Name}]])";
+            return $"el recurso \"{res.Name}\" (entregalo EXACTO incluyendo el marcador [[enviar: {res.Name}]]; el sistema agrega su contenido, no lo reescribas)";
         });
     }
 
