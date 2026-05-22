@@ -10,6 +10,7 @@
 @inject IChatService ChatSvc
 @inject IWhatsAppLineService LinesSvc
 @inject ILeadService LeadsSvc
+@inject IPipelineService PipelineSvc
 @inject NavigationManager Nav
 
 <PageTitle>Conversaciones - CUBOT.travels</PageTitle>
@@ -93,6 +94,13 @@ else
                         <div class="cv-th-name">@(_active.ContactName ?? _active.ContactPhone)</div>
                         <div class="cv-th-sub">@MaskPhone(_active.ContactPhone) &middot; @LineLabel(_active.WhatsAppLineId)</div>
                     </div>
+                    @if (_activeLead is null)
+                    {
+                        <button class="btn btn-primary btn-sm" @onclick="OpenConvert" title="Crear un lead en el embudo a partir de esta conversacion">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                            Llevar a Pipeline
+                        </button>
+                    }
                     @if (_lines.Count > 1)
                     {
                         <select class="cv-line-select" @bind="_lineId" title="Linea para responder">
@@ -220,6 +228,60 @@ else
     </div>
 }
 
+@if (_convertOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog" style="max-width:460px;">
+            <div class="modal-head">
+                <h3>Llevar a Pipeline</h3>
+                <button class="modal-close" @onclick="() => _convertOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="text-muted" style="font-size:12px;margin-bottom:12px;">Se creara un lead en el embudo a partir de esta conversacion y quedara vinculado.</div>
+                <div class="field">
+                    <label class="form-label">Nombre del contacto *</label>
+                    <input class="form-control" @bind="_cv.ContactName" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label class="form-label">Telefono</label>
+                    <input class="form-control" value="@_cv.ContactPhone" disabled />
+                </div>
+                <div class="field">
+                    <label class="form-label">Destino</label>
+                    <input class="form-control" @bind="_cv.Destination" autocomplete="off" />
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="form-label">Valor estimado</label>
+                        <input class="form-control" type="number" @bind="_cv.EstimatedValue" />
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Moneda</label>
+                        <input class="form-control" @bind="_cv.Currency" placeholder="COP" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="form-label">Etapa inicial</label>
+                    <select class="form-control" @bind="_cv.StageId">
+                        @foreach (var s in _stages)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+                @if (_convertError is not null)
+                {
+                    <div class="text-danger small">@_convertError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="() => _convertOpen = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmConvertAsync" disabled="@_converting">Crear lead</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
@@ -242,6 +304,12 @@ else
     private HubConnection? _hub;
     private string? _joinedConversation;
 
+    private List<PipelineStageDto> _stages = new();
+    private bool _convertOpen;
+    private bool _converting;
+    private string? _convertError;
+    private ConvertForm _cv = new();
+
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
@@ -253,6 +321,8 @@ else
         var lines = await LinesSvc.ListAsync();
         _lines = lines.Where(l => l.Status == WhatsAppLineStatus.Connected).ToList();
         _lineId = _lines.FirstOrDefault()?.Id ?? Guid.Empty;
+
+        _stages = (await PipelineSvc.ListStagesAsync()).ToList();
 
         if (_lines.Count > 0)
         {
@@ -387,11 +457,69 @@ else
 
     private static string LastSnippet(ConversationDto c) => "Toca para ver la conversacion";
 
+    private void OpenConvert()
+    {
+        if (_active is null) { return; }
+        _convertError = null;
+        _cv = new ConvertForm
+        {
+            ContactName = _active.ContactName ?? _active.ContactPhone,
+            ContactPhone = _active.ContactPhone,
+            StageId = _stages.FirstOrDefault()?.Id ?? Guid.Empty
+        };
+        _convertOpen = true;
+    }
+
+    private async Task ConfirmConvertAsync()
+    {
+        if (_active is null) { return; }
+        if (string.IsNullOrWhiteSpace(_cv.ContactName))
+        {
+            _convertError = "El nombre del contacto es obligatorio.";
+            return;
+        }
+        _converting = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var req = new CreateLeadRequest(
+                _cv.ContactName.Trim(),
+                _cv.ContactPhone,
+                string.IsNullOrWhiteSpace(_cv.Destination) ? null : _cv.Destination!.Trim(),
+                _cv.EstimatedValue,
+                string.IsNullOrWhiteSpace(_cv.Currency) ? null : _cv.Currency!.Trim(),
+                _cv.StageId == Guid.Empty ? null : _cv.StageId);
+            var lead = await LeadsSvc.CreateAsync(req, actor);
+            if (lead is null)
+            {
+                _convertError = "No se pudo crear el lead.";
+                return;
+            }
+            // Vincula la conversacion actual al nuevo lead (match por telefono).
+            await ChatSvc.GetOrCreateForLeadAsync(lead.Id);
+            _activeLead = lead;
+            await ReloadConversationsAsync();
+            _active = _conversations.FirstOrDefault(c => c.Id == _active!.Id) ?? _active;
+            _convertOpen = false;
+        }
+        finally { _converting = false; }
+    }
+
     private async Task<Guid> ActorAsync()
     {
         if (AuthState is null) { return Guid.Empty; }
         var st = await AuthState;
         return Guid.TryParse(st.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+    }
+
+    private sealed class ConvertForm
+    {
+        public string ContactName { get; set; } = "";
+        public string? ContactPhone { get; set; }
+        public string? Destination { get; set; }
+        public decimal? EstimatedValue { get; set; }
+        public string? Currency { get; set; } = "COP";
+        public Guid StageId { get; set; }
     }
 
     private static string Initials(string? name)
