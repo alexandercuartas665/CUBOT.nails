@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using CubotTravels.Application.Admin;
 using CubotTravels.Application.Common;
 using CubotTravels.Domain.Enums;
@@ -52,7 +54,14 @@ public sealed class AiInferenceService : IAiInferenceService
             return new AiChatResult(false, null, $"Alcanzaste el limite de tokens de IA de tu plan este mes ({quota.MonthlyLimitTokens:N0}). Actualiza tu plan para seguir usando los agentes.");
         }
 
-        var systemPrompt = await BuildSystemPrompt(agentId, systemPromptOverride ?? agent.SystemPrompt, cancellationToken);
+        // Recursos del agente (todos los tipos): se usan para componer el prompt y para resolver adjuntos.
+        var resources = await _db.AiAgentResources.AsNoTracking()
+            .Where(r => r.AgentId == agentId)
+            .OrderBy(r => r.SortOrder)
+            .Select(r => new AiChatAttachment(r.Name, r.ResourceType, r.FileUrl, r.FileName, r.Detail))
+            .ToListAsync(cancellationToken);
+
+        var systemPrompt = await BuildSystemPrompt(agentId, systemPromptOverride ?? agent.SystemPrompt, resources, cancellationToken);
 
         var result = await _client.CompleteAsync(agent.Provider, apiKey, providerCfg.BaseUrl, model, systemPrompt, turns, cancellationToken);
 
@@ -62,15 +71,21 @@ public sealed class AiInferenceService : IAiInferenceService
             await _usage.RecordAsync(agent.Id, agent.Provider, model, result.InputTokens, result.OutputTokens, "test", true, cancellationToken);
         }
 
+        // Entrega de recursos: el modelo marca [[enviar: Nombre]] y aqui adjuntamos el recurso (archivo o texto).
+        if (result.Ok && !string.IsNullOrEmpty(result.Text))
+        {
+            var (cleanText, attachments) = ExtractAttachments(result.Text!, resources);
+            return result with { Text = cleanText, Attachments = attachments };
+        }
+
         return result;
     }
 
-    // Arma el prompt del sistema: prompt base + enrutador de prompts (nombre + regla + cuerpo) + recursos de texto.
-    private async Task<string> BuildSystemPrompt(Guid agentId, string basePrompt, CancellationToken ct)
+    // Arma el prompt del sistema: prompt base + enrutador (con {{recurso}} expandido) + catalogo de recursos.
+    private async Task<string> BuildSystemPrompt(Guid agentId, string basePrompt, IReadOnlyList<AiChatAttachment> resources, CancellationToken ct)
     {
-        var sb = new StringBuilder(basePrompt);
+        var sb = new StringBuilder(ExpandResourceRefs(basePrompt, resources));
 
-        // Enrutador: prompts con nombre + regla. El modelo elige el que aplique segun el mensaje del cliente.
         var prompts = await _db.AiAgentPrompts.AsNoTracking()
             .Where(p => p.AgentId == agentId)
             .OrderBy(p => p.SortOrder)
@@ -86,27 +101,76 @@ public sealed class AiInferenceService : IAiInferenceService
                 sb.AppendLine();
                 sb.AppendLine($"### Prompt \"{p.Name}\"");
                 sb.AppendLine($"Regla (cuando usarlo): {(string.IsNullOrWhiteSpace(p.Rule) ? "(sin regla; usar a criterio)" : p.Rule)}");
-                sb.AppendLine($"Instrucciones: {p.Body}");
+                sb.AppendLine($"Instrucciones: {ExpandResourceRefs(p.Body, resources)}");
             }
         }
 
-        // Recursos de texto como contexto utilizable.
-        var resources = await _db.AiAgentResources.AsNoTracking()
-            .Where(r => r.AgentId == agentId && r.ResourceType == AgentResourceType.Text && r.Detail != null)
-            .OrderBy(r => r.SortOrder)
-            .Select(r => new { r.Name, r.Detail })
-            .ToListAsync(ct);
         if (resources.Count > 0)
         {
             sb.AppendLine();
             sb.AppendLine();
-            sb.AppendLine("Recursos disponibles para responder:");
+            sb.AppendLine("Recursos disponibles. Los de tipo Texto contienen informacion que puedes usar al responder. Los de tipo Image/Video/Pdf/Audio/Location son archivos que puedes ENTREGAR al cliente: para enviar uno, incluye en tu respuesta el marcador [[enviar: Nombre exacto del recurso]] (el sistema adjuntara el archivo; no describas la URL).");
             foreach (var r in resources)
             {
-                sb.AppendLine($"- {r.Name}: {r.Detail}");
+                if (r.ResourceType == AgentResourceType.Text)
+                {
+                    sb.AppendLine($"- (Texto) {r.Name}: {r.Detail}");
+                }
+                else
+                {
+                    sb.AppendLine($"- ({r.ResourceType}) {r.Name}: {(string.IsNullOrWhiteSpace(r.Detail) ? "archivo" : r.Detail)}  -> para enviarlo: [[enviar: {r.Name}]]");
+                }
             }
         }
 
+        return sb.ToString();
+    }
+
+    // Reemplaza {{nombre}} por el contenido del recurso (texto) o por la instruccion de envio (media).
+    private static string ExpandResourceRefs(string text, IReadOnlyList<AiChatAttachment> resources)
+    {
+        if (string.IsNullOrEmpty(text) || !text.Contains("{{")) { return text; }
+        return Regex.Replace(text, @"\{\{\s*([^}]+?)\s*\}\}", m =>
+        {
+            var res = FindResource(resources, m.Groups[1].Value);
+            if (res is null) { return m.Value; }
+            return res.ResourceType == AgentResourceType.Text
+                ? (res.Detail ?? "")
+                : $"el recurso \"{res.Name}\" (para entregarlo incluye [[enviar: {res.Name}]])";
+        });
+    }
+
+    // Extrae los marcadores [[enviar: Nombre]], los quita del texto y devuelve los recursos a adjuntar.
+    private static (string, IReadOnlyList<AiChatAttachment>) ExtractAttachments(string text, IReadOnlyList<AiChatAttachment> resources)
+    {
+        var attachments = new List<AiChatAttachment>();
+        var clean = Regex.Replace(text, @"\[\[\s*enviar\s*:\s*([^\]]+?)\s*\]\]", m =>
+        {
+            var res = FindResource(resources, m.Groups[1].Value);
+            if (res is not null && attachments.All(a => a.Name != res.Name)) { attachments.Add(res); }
+            return string.Empty;
+        }, RegexOptions.IgnoreCase);
+
+        // Limpia espacios/lineas sobrantes que deja el marcador.
+        clean = Regex.Replace(clean, @"[ \t]+\n", "\n").Trim();
+        return (clean, attachments);
+    }
+
+    private static AiChatAttachment? FindResource(IReadOnlyList<AiChatAttachment> resources, string name)
+    {
+        var key = Normalize(name);
+        return resources.FirstOrDefault(r => Normalize(r.Name) == key);
+    }
+
+    // Normaliza para comparar nombres: minusculas y sin acentos (asi "politica" == "{{politica}}").
+    private static string Normalize(string s)
+    {
+        var n = s.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder();
+        foreach (var c in n)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark) { sb.Append(c); }
+        }
         return sb.ToString();
     }
 }

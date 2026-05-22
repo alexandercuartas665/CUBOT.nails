@@ -239,23 +239,51 @@ else
                 <div class="ag-editor-right">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                         <div class="pl-stagegroup-title">Probar agente</div>
-                        @if (_testTurns.Count > 0)
+                        @if (_testMsgs.Count > 0)
                         {
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => { _testTurns.Clear(); _testError = null; }" disabled="@_testBusy">Limpiar</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => { _testMsgs.Clear(); _testError = null; }" disabled="@_testBusy">Limpiar</button>
                         }
                     </div>
                     <div class="text-muted" style="font-size:11.5px;margin-bottom:10px;">Conversa como si fueras el cliente. Usa el prompt y los recursos de la izquierda (aunque no los hayas guardado).</div>
                     <div class="ag-test">
                         <div class="ag-test-body">
-                            @if (_testTurns.Count == 0)
+                            @if (_testMsgs.Count == 0)
                             {
                                 <div class="ag-test-empty">Escribe un mensaje para probar la respuesta del agente.</div>
                             }
                             else
                             {
-                                @foreach (var t in _testTurns)
+                                @foreach (var t in _testMsgs)
                                 {
-                                    <div class="ag-bubble @(t.Role == "model" ? "bot" : "me")">@t.Text</div>
+                                    <div class="ag-bubble @(t.Role == "model" ? "bot" : "me")">
+                                        @if (!string.IsNullOrWhiteSpace(t.Text)) { <div>@t.Text</div> }
+                                        @if (t.Attachments is { Count: > 0 })
+                                        {
+                                            @foreach (var a in t.Attachments)
+                                            {
+                                                <div class="ag-attach">
+                                                    @switch (a.ResourceType)
+                                                    {
+                                                        case AgentResourceType.Image:
+                                                            <img src="@a.FileUrl" alt="@a.Name" />
+                                                            break;
+                                                        case AgentResourceType.Video:
+                                                            <video src="@a.FileUrl" controls></video>
+                                                            break;
+                                                        case AgentResourceType.Audio:
+                                                            <audio src="@a.FileUrl" controls></audio>
+                                                            break;
+                                                        case AgentResourceType.Location:
+                                                            <a href="@MapsLink(a.Detail)" target="_blank">📍 @a.Name</a>
+                                                            break;
+                                                        default:
+                                                            <a href="@a.FileUrl" target="_blank" download>📎 @(a.FileName ?? a.Name)</a>
+                                                            break;
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
                                 }
                             }
                             @if (_testBusy)
@@ -426,10 +454,12 @@ else
     };
 
     // Chat de prueba del agente
-    private readonly List<AiChatTurn> _testTurns = new();
+    private readonly List<TestMsg> _testMsgs = new();
     private string? _testInput;
     private bool _testBusy;
     private string? _testError;
+
+    private sealed record TestMsg(string Role, string Text, IReadOnlyList<AiChatAttachment>? Attachments = null);
 
     protected override async Task OnInitializedAsync()
     {
@@ -487,11 +517,13 @@ else
 
     private void ResetTest()
     {
-        _testTurns.Clear();
+        _testMsgs.Clear();
         _testInput = null;
         _testError = null;
         _testBusy = false;
     }
+
+    private static string MapsLink(string? coords) => $"https://www.google.com/maps?q={coords}";
 
     private async Task OpenEditAsync(Guid id)
     {
@@ -657,15 +689,16 @@ else
     {
         if (_editId is null || string.IsNullOrWhiteSpace(_testInput)) { return; }
         _testError = null;
-        _testTurns.Add(new AiChatTurn("user", _testInput!.Trim()));
+        _testMsgs.Add(new TestMsg("user", _testInput!.Trim()));
         _testInput = null;
         _testBusy = true;
         try
         {
-            var result = await InferenceSvc.TestChatAsync(_editId.Value, _testTurns.ToList(), _fPrompt);
-            if (result.Ok && !string.IsNullOrWhiteSpace(result.Text))
+            var turns = _testMsgs.Select(m => new AiChatTurn(m.Role, m.Text)).ToList();
+            var result = await InferenceSvc.TestChatAsync(_editId.Value, turns, _fPrompt);
+            if (result.Ok && (!string.IsNullOrWhiteSpace(result.Text) || result.Attachments is { Count: > 0 }))
             {
-                _testTurns.Add(new AiChatTurn("model", result.Text!));
+                _testMsgs.Add(new TestMsg("model", result.Text ?? "", result.Attachments));
                 _usage = await UsageSvc.GetSummaryAsync();
                 _quota = await UsageSvc.GetQuotaAsync();
             }

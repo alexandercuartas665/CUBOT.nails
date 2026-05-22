@@ -610,6 +610,11 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .ag-bubble.me { align-self: flex-end; background: var(--gradient-violet, #7c4dff); color: #fff; border-bottom-right-radius: 4px; }
 .ag-bubble.bot { align-self: flex-start; background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
 .ag-bubble.ag-typing { color: var(--muted-foreground); font-style: italic; }
+.ag-attach { margin-top: 6px; }
+.ag-attach img, .ag-attach video { max-width: 200px; max-height: 200px; border-radius: 8px; display: block; }
+.ag-attach audio { max-width: 220px; }
+.ag-attach a { font-size: 12px; font-weight: 600; color: var(--primary); text-decoration: none; }
+.ag-bubble.bot .ag-attach a { color: var(--primary); }
 .ag-test-input { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); background: var(--card); }
 .ag-test-input input { flex: 1; }
 
