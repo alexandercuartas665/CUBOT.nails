@@ -69,3 +69,8 @@ apps/backend/src/CubotTravels.SuperAdmin/wwwroot/uploads/
 
 # Binarios/herramientas locales (cloudflared para el tunel de desarrollo)
 tools/
+
+# Excepcion: Bootstrap vendorizado del backend (la regla generica `dist` de arriba,
+# pensada para el prototipo JS, lo estaba ignorando y rompia el CSS en produccion).
+!apps/backend/src/CubotTravels.SuperAdmin/wwwroot/lib/
+!apps/backend/src/CubotTravels.SuperAdmin/wwwroot/lib/**
