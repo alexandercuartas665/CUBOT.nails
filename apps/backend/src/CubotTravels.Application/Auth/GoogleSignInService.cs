@@ -104,17 +104,18 @@ public sealed class GoogleSignInService : IGoogleSignInService
                 "Tu cuenta de Google fue validada, pero todavia no tienes acceso a CUBOT.travels. Solicita una invitacion al administrador.");
         }
 
+        // Regla: el login con Google es solo para usuarios de agencia (clientes). Los operadores de
+        // plataforma (Super Admin / roles internos) ingresan unicamente con correo y contrasena.
+        if (user.PlatformRole is not null)
+        {
+            return new GoogleSignInResult(false,
+                "Los operadores de plataforma ingresan con correo y contrasena, no con Google.");
+        }
+
         // Vincular el subject de Google al usuario (primer login con Google) y marcar verificado.
         if (string.IsNullOrEmpty(user.GoogleSubject)) { user.GoogleSubject = identity.Subject; }
         user.EmailVerified = true;
         user.LastLoginAt = DateTimeOffset.UtcNow;
-
-        // Operador de plataforma (Super Admin / roles internos).
-        if (user.PlatformRole is PlatformRole role)
-        {
-            await _db.SaveChangesAsync(cancellationToken);
-            return new GoogleSignInResult(true, null, user.Id, user.DisplayName ?? user.Email, user.Email, PlatformRole: role.ToString());
-        }
 
         // Usuario de agencia: resolver membresia activa (sin tenant aun, se ignora el filtro global).
         var membership = await _db.TenantUsers
