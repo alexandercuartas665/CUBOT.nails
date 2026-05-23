@@ -29,6 +29,8 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
     public DbSet<EvolutionMasterConfig> EvolutionMasterConfigs => Set<EvolutionMasterConfig>();
     public DbSet<AiProviderConfig> AiProviderConfigs => Set<AiProviderConfig>();
     public DbSet<PlatformBranding> PlatformBrandings => Set<PlatformBranding>();
+    public DbSet<EmailConfig> EmailConfigs => Set<EmailConfig>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
     public DbSet<SuperAdminAuditLog> SuperAdminAuditLogs => Set<SuperAdminAuditLog>();
 
@@ -172,6 +174,21 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
             b.Property(x => x.LoginLogoUrl).HasMaxLength(500);
             b.Property(x => x.LoginHeadline).HasMaxLength(160);
             b.Property(x => x.LoginSubtext).HasMaxLength(600);
+        });
+
+        modelBuilder.Entity<EmailConfig>(b =>
+        {
+            b.Property(x => x.SmtpHost).HasMaxLength(200);
+            b.Property(x => x.SmtpUser).HasMaxLength(200);
+            b.Property(x => x.FromEmail).HasMaxLength(200);
+            b.Property(x => x.FromName).HasMaxLength(160);
+        });
+
+        modelBuilder.Entity<PasswordResetToken>(b =>
+        {
+            b.Property(x => x.TokenHash).HasMaxLength(80).IsRequired();
+            b.HasIndex(x => x.TokenHash);
+            b.HasIndex(x => x.PlatformUserId);
         });
 
         modelBuilder.Entity<WompiMasterConfig>(b =>

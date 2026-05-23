@@ -186,6 +186,36 @@ app.MapPost("/auth/register", async (
     return Results.Redirect("/mi-cuenta");
 }).DisableAntiforgery();
 
+// Recuperar contrasena (autogestion): envia un enlace de reseteo por correo. Nunca revela si el
+// correo existe. El enlace usa el host de la peticion (sirve en dev y en prod tras forwarded headers).
+app.MapPost("/auth/forgot", async (
+    HttpContext http,
+    [FromForm] string email,
+    CubotTravels.Application.Auth.IPasswordResetService reset) =>
+{
+    var baseUrl = $"{http.Request.Scheme}://{http.Request.Host}";
+    var result = await reset.RequestAsync(email, baseUrl);
+    if (!result.Success)
+    {
+        return Results.Redirect($"/recuperar?error={Uri.EscapeDataString(result.Error ?? "No se pudo procesar la solicitud.")}");
+    }
+    return Results.Redirect("/recuperar?sent=1");
+}).DisableAntiforgery();
+
+// Aplica la nueva contrasena usando el token del enlace del correo.
+app.MapPost("/auth/reset", async (
+    [FromForm] string token,
+    [FromForm] string password,
+    CubotTravels.Application.Auth.IPasswordResetService reset) =>
+{
+    var result = await reset.ResetAsync(token, password);
+    if (!result.Success)
+    {
+        return Results.Redirect($"/restablecer?token={Uri.EscapeDataString(token)}&error={Uri.EscapeDataString(result.Error ?? "No se pudo restablecer la contrasena.")}");
+    }
+    return Results.Redirect("/login?reset=1");
+}).DisableAntiforgery();
+
 app.MapPost("/auth/logout", async (HttpContext http) =>
 {
     await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);

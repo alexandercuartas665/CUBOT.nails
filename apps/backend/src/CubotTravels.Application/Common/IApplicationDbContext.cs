@@ -39,6 +39,8 @@ public interface IApplicationDbContext
     DbSet<EvolutionMasterConfig> EvolutionMasterConfigs { get; }
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
     DbSet<PlatformBranding> PlatformBrandings { get; }
+    DbSet<EmailConfig> EmailConfigs { get; }
+    DbSet<PasswordResetToken> PasswordResetTokens { get; }
     DbSet<SuperAdminAuditLog> SuperAdminAuditLogs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

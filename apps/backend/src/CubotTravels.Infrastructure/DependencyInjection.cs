@@ -47,6 +47,8 @@ public static class DependencyInjection
             .SetApplicationName("CubotTravels")
             .PersistKeysToDbContext<CubotTravelsDbContext>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
+        // Correo saliente via SMTP configurable por el Super Admin (clave cifrada).
+        services.AddScoped<Application.Common.IEmailSender, Email.SmtpEmailSender>();
         services.AddHttpClient<CubotTravels.Application.Admin.IWompiApiClient, Wompi.WompiApiClient>();
         services.AddHttpClient<CubotTravels.Application.Admin.IEvolutionApiClient, Evolution.EvolutionApiClient>();
         services.AddHttpClient<CubotTravels.Application.Tenancy.IAiProviderClient, Ai.AiProviderClient>();

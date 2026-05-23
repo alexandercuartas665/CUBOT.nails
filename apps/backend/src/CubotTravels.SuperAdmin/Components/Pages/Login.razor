@@ -48,6 +48,10 @@
                 {
                     <div class="auth-alert auth-alert-error">Credenciales invalidas o cuenta sin acceso.</div>
                 }
+                @if (Reset == 1)
+                {
+                    <div class="auth-alert auth-alert-ok">Tu contrasena se actualizo. Ya puedes iniciar sesion.</div>
+                }
 
                 <form method="post" action="/auth/login" class="auth-form">
                     <div class="auth-field">
@@ -55,7 +59,10 @@
                         <input id="login-email" name="email" type="email" required placeholder="tu.correo@ejemplo.com" />
                     </div>
                     <div class="auth-field">
-                        <label for="login-password">Contrasena</label>
+                        <div class="auth-label-row">
+                            <label for="login-password">Contrasena</label>
+                            <a class="auth-forgot" href="/recuperar">Olvidaste tu contrasena?</a>
+                        </div>
                         <div class="auth-input-icon">
                             <input id="login-password" name="password" type="password" required placeholder="Tu contrasena" />
                             <button type="button" class="auth-eye" onclick="cubotAuth.toggle('login-password', this)">MOSTRAR</button>
@@ -161,6 +168,7 @@
 
 @code {
     [SupplyParameterFromQuery] public int? Error { get; set; }
+    [SupplyParameterFromQuery] public int? Reset { get; set; }
     [SupplyParameterFromQuery] public string? RegError { get; set; }
     [SupplyParameterFromQuery] public string? Mode { get; set; }
 
