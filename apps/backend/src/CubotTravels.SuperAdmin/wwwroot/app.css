@@ -559,6 +559,21 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .cv-warn a { color: var(--primary); font-weight: 600; }
 .cv-grid { display: grid; grid-template-columns: 320px 1fr 300px; gap: 16px; height: calc(100vh - 270px); min-height: 480px; }
 @media (max-width: 1100px) { .cv-grid { grid-template-columns: 280px 1fr; } .cv-side-col { display: none; } }
+.cv-back { display: none; }
+@media (max-width: 768px) {
+  /* Una sola columna a la vez: lista por defecto, hilo al elegir un chat. */
+  .cv-grid { grid-template-columns: 1fr; height: auto; }
+  .cv-list-col, .cv-thread-col { height: calc(100vh - 210px); min-height: 420px; }
+  .cv-grid:not(.cv-has-active) .cv-thread-col { display: none; }
+  .cv-grid.cv-has-active .cv-list-col { display: none; }
+  .cv-back {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; flex: none; margin-left: -2px;
+    border: 1px solid var(--border); border-radius: 9px; background: var(--card);
+    color: var(--foreground); cursor: pointer;
+  }
+  .cv-back svg { width: 18px; height: 18px; }
+}
 
 .cv-list-col, .cv-thread-col, .cv-side-col { background: var(--card); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
 .cv-side-col { padding: 14px; gap: 14px; overflow-y: auto; }
@@ -828,4 +843,6 @@ h1, h2, h3 { letter-spacing: -0.01em; }
   .cubot-content { padding: 14px 11px; }
   .page-title { font-size: 1.32rem; }
   .page-sub { font-size: .86rem; }
+  /* Formularios de 2 columnas (lead, etc.) a una sola columna. */
+  .pl-fields { grid-template-columns: 1fr; }
 }

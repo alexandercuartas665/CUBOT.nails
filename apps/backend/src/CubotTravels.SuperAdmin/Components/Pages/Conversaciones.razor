@@ -40,7 +40,7 @@ else if (_lines.Count == 0)
 }
 else
 {
-    <div class="cv-grid">
+    <div class="cv-grid @(_active is null ? "" : "cv-has-active")">
         @* ===== Columna 1: lista de chats ===== *@
         <div class="cv-list-col">
             <div class="cv-search">
@@ -91,6 +91,9 @@ else
             else
             {
                 <div class="cv-thread-head">
+                    <button class="cv-back" @onclick="() => { _active = null; _activeLead = null; }" aria-label="Volver a la lista">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                    </button>
                     <span class="cv-avatar lg">@Initials(_active.ContactName ?? _active.ContactPhone)</span>
                     <div style="flex:1;min-width:0;">
                         <div class="cv-th-name">@(_active.ContactName ?? _active.ContactPhone)</div>
