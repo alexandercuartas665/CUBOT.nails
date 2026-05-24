@@ -25,4 +25,20 @@ public class PipelineFieldDefinition : TenantEntity
 
     /// <summary>Opciones para tipo Select, separadas por salto de linea.</summary>
     public string? Options { get; set; }
+
+    /// <summary>
+    /// Descripcion/contexto del campo: para que sirve. Se muestra como ayuda al asesor y queda
+    /// disponible para que un MCP / agentes de IA entiendan y llenen el campo a futuro.
+    /// </summary>
+    public string? Description { get; set; }
+
+    /// <summary>Permite capturar varios valores en este campo (p.ej. multiples telefonos). Se guardan como arreglo JSON.</summary>
+    public bool AllowMultiple { get; set; }
+
+    /// <summary>
+    /// Si se indica el FieldKey de un campo numerico de la misma etapa, este campo se repite N veces
+    /// segun el valor de ese campo (p.ej. "edades" se repite tantas veces como diga "ninos"). Los
+    /// valores se guardan como arreglo JSON.
+    /// </summary>
+    public string? RepeatWithFieldKey { get; set; }
 }

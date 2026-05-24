@@ -185,7 +185,7 @@ public sealed class PipelineService : IPipelineService
         await _db.PipelineFieldDefinitions
             .AsNoTracking()
             .OrderBy(f => f.SortOrder)
-            .Select(f => new PipelineFieldDto(f.Id, f.StageId, f.FieldKey, f.Label, f.FieldType, f.Column, f.SortOrder, f.Options))
+            .Select(f => new PipelineFieldDto(f.Id, f.StageId, f.FieldKey, f.Label, f.FieldType, f.Column, f.SortOrder, f.Options, f.Description, f.AllowMultiple, f.RepeatWithFieldKey))
             .ToListAsync(cancellationToken);
 
     public async Task<PipelineFieldDto?> CreateFieldAsync(CreatePipelineFieldRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -213,13 +213,16 @@ public sealed class PipelineService : IPipelineService
             FieldType = request.FieldType,
             Column = request.Column is 1 or 2 ? request.Column : 1,
             SortOrder = maxOrder + 1,
-            Options = string.IsNullOrWhiteSpace(request.Options) ? null : request.Options.Trim()
+            Options = string.IsNullOrWhiteSpace(request.Options) ? null : request.Options.Trim(),
+            Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            AllowMultiple = request.AllowMultiple,
+            RepeatWithFieldKey = string.IsNullOrWhiteSpace(request.RepeatWithFieldKey) ? null : request.RepeatWithFieldKey.Trim()
         };
         _db.PipelineFieldDefinitions.Add(field);
         _audit.Write(actorUserId, "pipeline-field.create", nameof(PipelineFieldDefinition), field.Id,
             previousValue: null, newValue: new { field.StageId, field.FieldKey, field.Label }, tenantId: tenantId);
         await _db.SaveChangesAsync(cancellationToken);
-        return new PipelineFieldDto(field.Id, field.StageId, field.FieldKey, field.Label, field.FieldType, field.Column, field.SortOrder, field.Options);
+        return new PipelineFieldDto(field.Id, field.StageId, field.FieldKey, field.Label, field.FieldType, field.Column, field.SortOrder, field.Options, field.Description, field.AllowMultiple, field.RepeatWithFieldKey);
     }
 
     public async Task<PipelineFieldDto?> UpdateFieldAsync(Guid fieldId, UpdatePipelineFieldRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -233,10 +236,13 @@ public sealed class PipelineService : IPipelineService
         field.FieldType = request.FieldType;
         field.Column = request.Column is 1 or 2 ? request.Column : 1;
         field.Options = string.IsNullOrWhiteSpace(request.Options) ? null : request.Options.Trim();
+        field.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        field.AllowMultiple = request.AllowMultiple;
+        field.RepeatWithFieldKey = string.IsNullOrWhiteSpace(request.RepeatWithFieldKey) ? null : request.RepeatWithFieldKey.Trim();
         _audit.Write(actorUserId, "pipeline-field.update", nameof(PipelineFieldDefinition), field.Id,
             previousValue: null, newValue: new { field.Label, field.FieldType }, tenantId: field.TenantId);
         await _db.SaveChangesAsync(cancellationToken);
-        return new PipelineFieldDto(field.Id, field.StageId, field.FieldKey, field.Label, field.FieldType, field.Column, field.SortOrder, field.Options);
+        return new PipelineFieldDto(field.Id, field.StageId, field.FieldKey, field.Label, field.FieldType, field.Column, field.SortOrder, field.Options, field.Description, field.AllowMultiple, field.RepeatWithFieldKey);
     }
 
     public async Task<bool> DeleteFieldAsync(Guid fieldId, Guid actorUserId, CancellationToken cancellationToken = default)

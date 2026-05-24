@@ -497,27 +497,81 @@ else
                             {
                                 <div class="pl-field @(f.Column == 2 ? "col2" : "")">
                                     <label class="form-label">@f.Label</label>
-                                    @switch (f.FieldType)
+                                    @if (!string.IsNullOrWhiteSpace(f.Description))
                                     {
-                                        case PipelineFieldType.TextArea:
-                                            <textarea class="form-control" rows="2" @bind="_editValues[f.FieldKey]"></textarea>
-                                            break;
-                                        case PipelineFieldType.Number:
-                                        case PipelineFieldType.Currency:
-                                            <input class="form-control" type="number" @bind="_editValues[f.FieldKey]" />
-                                            break;
-                                        case PipelineFieldType.Select:
-                                            <select class="form-control" @bind="_editValues[f.FieldKey]">
-                                                <option value="">—</option>
-                                                @foreach (var opt in SelectOptions(f))
+                                        <div class="pl-field-help">@f.Description</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(f.RepeatWithFieldKey))
+                                    {
+                                        var rc = RepeatCount(f.RepeatWithFieldKey!);
+                                        if (rc <= 0)
+                                        {
+                                            <div class="text-muted" style="font-size:11.5px;">Indica "@FieldLabel(f.RepeatWithFieldKey!)" para capturar @f.Label.</div>
+                                        }
+                                        else
+                                        {
+                                            var rlist = MultiList(f.FieldKey, rc);
+                                            for (int ri = 0; ri < rc; ri++)
+                                            {
+                                                var ci = ri;
+                                                <div class="pl-multi-row">
+                                                    <span class="pl-multi-idx">@(ci + 1)</span>
+                                                    @if (f.FieldType is PipelineFieldType.Number or PipelineFieldType.Currency)
+                                                    {
+                                                        <input class="form-control" type="number" @bind="rlist[ci]" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <input class="form-control" @bind="rlist[ci]" />
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    }
+                                    else if (f.AllowMultiple)
+                                    {
+                                        var mlist = MultiList(f.FieldKey, -1);
+                                        for (int mi = 0; mi < mlist.Count; mi++)
+                                        {
+                                            var ci = mi;
+                                            <div class="pl-multi-row">
+                                                @if (f.FieldType is PipelineFieldType.Number or PipelineFieldType.Currency)
                                                 {
-                                                    <option value="@opt">@opt</option>
+                                                    <input class="form-control" type="number" @bind="mlist[ci]" />
                                                 }
-                                            </select>
-                                            break;
-                                        default:
-                                            <input class="form-control" @bind="_editValues[f.FieldKey]" />
-                                            break;
+                                                else
+                                                {
+                                                    <input class="form-control" @bind="mlist[ci]" />
+                                                }
+                                                <button type="button" class="pl-multi-del" title="Quitar" @onclick="() => RemoveMulti(f.FieldKey, ci)">&times;</button>
+                                            </div>
+                                        }
+                                        <button type="button" class="pl-multi-add" @onclick="() => AddMulti(f.FieldKey)">+ Agregar</button>
+                                    }
+                                    else
+                                    {
+                                        @switch (f.FieldType)
+                                        {
+                                            case PipelineFieldType.TextArea:
+                                                <textarea class="form-control" rows="2" @bind="_editValues[f.FieldKey]"></textarea>
+                                                break;
+                                            case PipelineFieldType.Number:
+                                            case PipelineFieldType.Currency:
+                                                <input class="form-control" type="number" @bind="_editValues[f.FieldKey]" />
+                                                break;
+                                            case PipelineFieldType.Select:
+                                                <select class="form-control" @bind="_editValues[f.FieldKey]">
+                                                    <option value="">—</option>
+                                                    @foreach (var opt in SelectOptions(f))
+                                                    {
+                                                        <option value="@opt">@opt</option>
+                                                    }
+                                                </select>
+                                                break;
+                                            default:
+                                                <input class="form-control" @bind="_editValues[f.FieldKey]" />
+                                                break;
+                                        }
                                     }
                                 </div>
                             }
@@ -1129,18 +1183,30 @@ else
                 @{
                     var cfgFields = _fields.Where(f => f.StageId == _cfgStageId).OrderBy(f => f.SortOrder).ToList();
                 }
+                @{
+                    var numericFields = cfgFields.Where(x => x.FieldType is PipelineFieldType.Number && (_editingFieldId is null || x.Id != _editingFieldId)).ToList();
+                }
                 @foreach (var f in cfgFields)
                 {
                     <div class="cfg-row">
                         <div class="grow">
-                            <div style="font-weight:600;font-size:13px;">@f.Label</div>
+                            <div style="font-weight:600;font-size:13px;">
+                                @f.Label
+                                @if (f.AllowMultiple) { <span class="cfg-tag">multiple</span> }
+                                @if (!string.IsNullOrEmpty(f.RepeatWithFieldKey)) { <span class="cfg-tag">x @FieldLabel(f.RepeatWithFieldKey!)</span> }
+                            </div>
                             <div class="text-muted" style="font-size:11px;">@f.FieldType &middot; col @f.Column &middot; @f.FieldKey</div>
+                            @if (!string.IsNullOrWhiteSpace(f.Description))
+                            {
+                                <div class="text-muted" style="font-size:11px;font-style:italic;">@f.Description</div>
+                            }
                         </div>
+                        <button class="btn btn-outline-secondary" style="padding:2px 8px;" disabled="@_busy" @onclick="() => EditField(f)">Editar</button>
                         <button class="btn btn-outline-danger" style="padding:2px 8px;" disabled="@_busy" @onclick="() => DeleteFieldAsync(f.Id)">Eliminar</button>
                     </div>
                 }
                 <div style="border:1px solid var(--border);border-radius:0.6rem;padding:12px;margin-top:8px;">
-                    <div style="font-weight:600;font-size:12px;margin-bottom:8px;">Nuevo campo</div>
+                    <div style="font-weight:600;font-size:12px;margin-bottom:8px;">@(_editingFieldId is null ? "Nuevo campo" : "Editar campo")</div>
                     <div class="field-row">
                         <div class="field">
                             <label class="form-label">Etiqueta</label>
@@ -1170,11 +1236,40 @@ else
                             <input class="form-control" @bind="_nf.Options" placeholder="solo para tipo Lista" />
                         </div>
                     </div>
+                    <div class="field">
+                        <label class="form-label">Descripcion / contexto <span class="text-muted" style="font-weight:400;">(para que sirve; ayuda al asesor y a la IA)</span></label>
+                        <textarea class="form-control" rows="2" @bind="_nf.Description" placeholder="Ej: Edad de cada nino para calcular tarifas y cupos."></textarea>
+                    </div>
+                    <div class="field-row" style="align-items:end;">
+                        <div class="field">
+                            <label class="form-label">Repetir segun campo</label>
+                            <select class="form-control" @bind="_nf.RepeatWithFieldKey">
+                                <option value="">(no repetir)</option>
+                                @foreach (var nfield in numericFields)
+                                {
+                                    <option value="@nfield.FieldKey">@nfield.Label</option>
+                                }
+                            </select>
+                            <div class="text-muted" style="font-size:11px;">Genera un input por cada unidad del campo numerico elegido (ej. edades x ninos).</div>
+                        </div>
+                        <div class="field">
+                            <label class="form-check" style="display:flex;align-items:center;gap:8px;font-weight:500;">
+                                <input type="checkbox" @bind="_nf.AllowMultiple" />
+                                Permitir varios valores (ej. varios telefonos)
+                            </label>
+                        </div>
+                    </div>
                     @if (_cfgFieldMsg is not null)
                     {
                         <div class="text-danger small">@_cfgFieldMsg</div>
                     }
-                    <button class="btn btn-primary" style="margin-top:6px;" disabled="@_busy" @onclick="AddFieldAsync">+ Agregar campo</button>
+                    <div style="margin-top:6px;display:flex;gap:8px;align-items:center;">
+                        <button class="btn btn-primary" disabled="@_busy" @onclick="AddFieldAsync">@(_editingFieldId is null ? "+ Agregar campo" : "Guardar cambios")</button>
+                        @if (_editingFieldId is not null)
+                        {
+                            <button class="btn btn-link" disabled="@_busy" @onclick="CancelEditField">Cancelar</button>
+                        }
+                    </div>
                 </div>
             </div>
             <div class="modal-foot">
@@ -1221,6 +1316,8 @@ else
     private Guid _editStageId;
     private EditLeadForm _el = new();
     private Dictionary<string, string?> _editValues = new();
+    // Valores de campos "multiples" o "repetidos" (lista por FieldKey); se guardan como arreglo JSON.
+    private Dictionary<string, List<string?>> _multiValues = new();
     private List<LeadActivityDto> _activities = new();
     private List<LeadNoteDto> _notes = new();
     private string _noteText = string.Empty;
@@ -1551,6 +1648,7 @@ else
     private Guid _cfgStageId;
     private string? _cfgFieldMsg;
     private NewFieldForm _nf = new();
+    private Guid? _editingFieldId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -1906,9 +2004,18 @@ else
             Currency = detail.Lead.Currency
         };
         _editValues = new Dictionary<string, string?>();
+        _multiValues = new Dictionary<string, List<string?>>();
         foreach (var f in _fields)
         {
-            _editValues[f.FieldKey] = detail.Lead.FieldValues.TryGetValue(f.FieldKey, out var v) ? v : null;
+            var raw = detail.Lead.FieldValues.TryGetValue(f.FieldKey, out var v) ? v : null;
+            if (f.AllowMultiple || !string.IsNullOrEmpty(f.RepeatWithFieldKey))
+            {
+                _multiValues[f.FieldKey] = ParseMulti(raw);
+            }
+            else
+            {
+                _editValues[f.FieldKey] = raw;
+            }
         }
         _leadOpen = true;
         await LoadChatAsync(leadId);
@@ -2067,6 +2174,11 @@ else
         {
             var actor = await ActorAsync();
             var values = new Dictionary<string, string?>(_editValues);
+            // Campos de multiples valores / repetidos: se guardan como arreglo JSON.
+            foreach (var kv in _multiValues)
+            {
+                values[kv.Key] = SerializeMulti(kv.Value);
+            }
             var req = new UpdateLeadRequest(_el.ContactName, _el.ContactPhone, _el.Destination,
                 _el.EstimatedValue, _el.Currency, values);
             var updated = await LeadsSvc.UpdateAsync(_editLead.Id, req, actor);
@@ -2261,12 +2373,45 @@ else
         {
             var actor = await ActorAsync();
             var options = string.IsNullOrWhiteSpace(_nf.Options) ? null : _nf.Options!.Replace(",", "\n").Trim();
-            await PipelineSvc.CreateFieldAsync(
-                new CreatePipelineFieldRequest(_cfgStageId, _nf.Label!, _nf.FieldType, _nf.Column, options), actor);
+            var repeat = string.IsNullOrWhiteSpace(_nf.RepeatWithFieldKey) ? null : _nf.RepeatWithFieldKey;
+            if (_editingFieldId is Guid editId)
+            {
+                await PipelineSvc.UpdateFieldAsync(editId,
+                    new UpdatePipelineFieldRequest(_nf.Label!, _nf.FieldType, _nf.Column, options, _nf.Description, _nf.AllowMultiple, repeat), actor);
+            }
+            else
+            {
+                await PipelineSvc.CreateFieldAsync(
+                    new CreatePipelineFieldRequest(_cfgStageId, _nf.Label!, _nf.FieldType, _nf.Column, options, null, _nf.Description, _nf.AllowMultiple, repeat), actor);
+            }
             _nf = new NewFieldForm();
+            _editingFieldId = null;
             await ReloadAsync();
         }
         finally { _busy = false; }
+    }
+
+    private void EditField(PipelineFieldDto f)
+    {
+        _editingFieldId = f.Id;
+        _cfgFieldMsg = null;
+        _nf = new NewFieldForm
+        {
+            Label = f.Label,
+            FieldType = f.FieldType,
+            Column = f.Column,
+            Options = f.Options,
+            Description = f.Description,
+            AllowMultiple = f.AllowMultiple,
+            RepeatWithFieldKey = f.RepeatWithFieldKey
+        };
+    }
+
+    private void CancelEditField()
+    {
+        _editingFieldId = null;
+        _cfgFieldMsg = null;
+        _nf = new NewFieldForm();
     }
 
     private async Task DeleteFieldAsync(Guid fieldId)
@@ -2321,6 +2466,66 @@ else
     {
         var email = UserEmail(id);
         return string.IsNullOrEmpty(email) ? "?" : email[..1].ToUpperInvariant();
+    }
+
+    // ===== Campos multiples / repetidos =====
+    private List<string?> ParseMulti(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) { return new List<string?>(); }
+        var t = raw.TrimStart();
+        if (t.StartsWith("["))
+        {
+            try
+            {
+                var arr = System.Text.Json.JsonSerializer.Deserialize<List<string?>>(raw);
+                if (arr is not null) { return arr; }
+            }
+            catch { /* no era JSON: se trata como valor unico */ }
+        }
+        return new List<string?> { raw };
+    }
+
+    private static string? SerializeMulti(List<string?> list)
+    {
+        var clean = list.Select(x => x?.Trim()).Where(x => !string.IsNullOrEmpty(x)).ToList();
+        return clean.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(clean);
+    }
+
+    // Cantidad de repeticiones segun el valor numerico del campo referenciado (0..20).
+    private int RepeatCount(string repeatFieldKey)
+    {
+        var raw = _editValues.TryGetValue(repeatFieldKey, out var v) ? v : null;
+        if (int.TryParse(raw, out var n)) { return Math.Clamp(n, 0, 20); }
+        return 0;
+    }
+
+    // Devuelve la lista del campo, ajustada al tamano pedido (fixedCount>=0 para repetidos;
+    // -1 para "multiples": garantiza al menos 1 fila para capturar).
+    private List<string?> MultiList(string key, int fixedCount)
+    {
+        if (!_multiValues.TryGetValue(key, out var list)) { list = new List<string?>(); _multiValues[key] = list; }
+        if (fixedCount >= 0)
+        {
+            while (list.Count < fixedCount) { list.Add(null); }
+            while (list.Count > fixedCount) { list.RemoveAt(list.Count - 1); }
+        }
+        else if (list.Count == 0) { list.Add(null); }
+        return list;
+    }
+
+    private void AddMulti(string key)
+    {
+        if (!_multiValues.TryGetValue(key, out var list)) { list = new List<string?>(); _multiValues[key] = list; }
+        list.Add(null);
+    }
+
+    private void RemoveMulti(string key, int index)
+    {
+        if (_multiValues.TryGetValue(key, out var list) && index >= 0 && index < list.Count)
+        {
+            list.RemoveAt(index);
+            if (list.Count == 0) { list.Add(null); }
+        }
     }
 
     // ===== Datos enriquecidos de la tarjeta =====
@@ -2528,5 +2733,8 @@ else
         public PipelineFieldType FieldType { get; set; } = PipelineFieldType.Text;
         public int Column { get; set; } = 1;
         public string? Options { get; set; }
+        public string? Description { get; set; }
+        public bool AllowMultiple { get; set; }
+        public string? RepeatWithFieldKey { get; set; }
     }
 }

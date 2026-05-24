@@ -32,7 +32,10 @@ public sealed record PipelineFieldDto(
     PipelineFieldType FieldType,
     int Column,
     int SortOrder,
-    string? Options);
+    string? Options,
+    string? Description = null,
+    bool AllowMultiple = false,
+    string? RepeatWithFieldKey = null);
 
 public sealed record CreatePipelineFieldRequest(
     Guid StageId,
@@ -40,10 +43,16 @@ public sealed record CreatePipelineFieldRequest(
     PipelineFieldType FieldType,
     int Column = 1,
     string? Options = null,
-    string? FieldKey = null);
+    string? FieldKey = null,
+    string? Description = null,
+    bool AllowMultiple = false,
+    string? RepeatWithFieldKey = null);
 
 public sealed record UpdatePipelineFieldRequest(
     string Label,
     PipelineFieldType FieldType,
     int Column,
-    string? Options);
+    string? Options,
+    string? Description = null,
+    bool AllowMultiple = false,
+    string? RepeatWithFieldKey = null);

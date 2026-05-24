@@ -277,6 +277,8 @@ public class CubotTravelsDbContext : DbContext, IApplicationDbContext, IDataProt
             b.Property(x => x.FieldKey).HasMaxLength(80).IsRequired();
             b.Property(x => x.Label).HasMaxLength(150).IsRequired();
             b.Property(x => x.Options).HasMaxLength(2000);
+            b.Property(x => x.Description).HasMaxLength(600);
+            b.Property(x => x.RepeatWithFieldKey).HasMaxLength(80);
             b.HasOne(x => x.Stage).WithMany().HasForeignKey(x => x.StageId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.StageId, x.SortOrder });
             b.HasIndex(x => new { x.StageId, x.FieldKey }).IsUnique();
