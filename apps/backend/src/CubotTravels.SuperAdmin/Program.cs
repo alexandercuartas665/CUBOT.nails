@@ -296,6 +296,30 @@ app.MapPost("/auth/logout", async (HttpContext http) =>
     return Results.Redirect("/login");
 }).DisableAntiforgery();
 
+// API publica de ingestion de leads por agencia. Auth por API key (header X-Api-Key) que resuelve
+// el tenant. Permite crear un lead y llenar cualquier campo del embudo desde sistemas externos.
+app.MapPost("/api/public/leads", async (
+    HttpRequest request,
+    CubotTravels.Application.Tenancy.ITenantApiService api,
+    CubotTravels.Application.Tenancy.ApiCreateLeadRequest body,
+    CancellationToken ct) =>
+{
+    var apiKey = request.Headers["X-Api-Key"].ToString();
+    if (string.IsNullOrWhiteSpace(apiKey))
+    {
+        return Results.Json(new { error = "Falta el header X-Api-Key." }, statusCode: 401);
+    }
+    var tenantId = await api.ResolveTenantAsync(apiKey, ct);
+    if (tenantId is null)
+    {
+        return Results.Json(new { error = "API key invalida o deshabilitada." }, statusCode: 401);
+    }
+    var result = await api.CreateLeadAsync(tenantId.Value, body, ct);
+    return result.Ok
+        ? Results.Json(new { ok = true, leadId = result.LeadId }, statusCode: 201)
+        : Results.Json(new { ok = false, error = result.Error }, statusCode: 400);
+}).AllowAnonymous().DisableAntiforgery();
+
 // Descarga del comprobante de pago (PDF). Solo pagos aprobados; el usuario de agencia solo
 // puede descargar comprobantes de su propio tenant; el operador de plataforma puede cualquiera.
 app.MapGet("/comprobante/{paymentId:guid}", async (

@@ -12,6 +12,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject CubotTravels.Application.Auth.IAuthService AuthSvc
+@inject CubotTravels.Application.Tenancy.ITenantApiService TenantApiSvc
 
 <PageTitle>Mi cuenta - CUBOT.travels</PageTitle>
 
@@ -176,6 +177,57 @@ else
                 }
             </div>
         </div>
+    </div>
+
+    <h2 style="font-size:1.05rem;font-weight:700;margin:26px 0 12px;">API de integracion</h2>
+    <div class="card" style="max-width:1040px;padding:18px 20px;">
+        <p class="text-muted" style="font-size:13px;margin-bottom:14px;">
+            Crea leads en tu embudo desde sistemas externos. Se autentica con tu API key (header <code>X-Api-Key</code>),
+            que identifica a tu agencia. Puedes activarla o desactivarla cuando quieras.
+        </p>
+
+        <div style="margin-bottom:14px;">
+            <label class="form-label" style="font-size:12px;font-weight:700;">ID de tu agencia (tenant)</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <code style="background:var(--muted);padding:4px 10px;border-radius:7px;font-size:12.5px;">@_tenantId</code>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => Copy(_tenantId.ToString())">Copiar</button>
+            </div>
+        </div>
+
+        @if (_api is null || !_api.HasKey)
+        {
+            <button class="btn btn-primary" disabled="@_apiBusy" @onclick="RegenerateApiKeyAsync">@(_apiBusy ? "Generando..." : "Generar API key")</button>
+        }
+        else
+        {
+            <div style="margin-bottom:14px;">
+                <label class="form-label" style="font-size:12px;font-weight:700;">API key</label>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <code style="background:var(--muted);padding:4px 10px;border-radius:7px;font-size:12.5px;word-break:break-all;">@_api.ApiKey</code>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => Copy(_api!.ApiKey ?? string.Empty)">Copiar</button>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+                <span class="badge bg-@(_api.IsEnabled ? "success" : "secondary")">@(_api.IsEnabled ? "Activa" : "Inactiva")</span>
+                <button class="btn btn-outline-secondary btn-sm" disabled="@_apiBusy" @onclick="ToggleApiAsync">@(_api.IsEnabled ? "Desactivar" : "Activar")</button>
+                <button class="btn btn-outline-secondary btn-sm" disabled="@_apiBusy" @onclick="RegenerateApiKeyAsync">Regenerar clave</button>
+                @if (_api.LastUsedAt is { } lu)
+                {
+                    <span class="text-muted" style="font-size:11px;">Ultimo uso: @lu.LocalDateTime.ToString("dd MMM yyyy HH:mm")</span>
+                }
+            </div>
+
+            <label class="form-label" style="font-size:12px;font-weight:700;">Ejemplo (curl)</label>
+            <div style="position:relative;">
+                <pre style="background:var(--muted);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11.5px;white-space:pre-wrap;overflow:auto;margin:0;">@ApiCurl()</pre>
+                <button class="btn btn-outline-secondary btn-sm" style="position:absolute;top:8px;right:8px;" @onclick="() => Copy(ApiCurl())">Copiar</button>
+            </div>
+            <p class="text-muted" style="font-size:11px;margin-top:8px;">
+                En <code>fields</code> puedes enviar cualquier campo del embudo por su clave (ej. adultos, ninos, comentarios).
+                La clave se muestra solo aqui; si la regeneras, la anterior deja de funcionar.
+            </p>
+        }
     </div>
 
     <h2 style="font-size:1.05rem;font-weight:700;margin:26px 0 12px;">Mis facturas</h2>
@@ -433,6 +485,8 @@ else
     private PlanDetail? _plan;
     private List<PaymentDetail> _payments = new();
     private TenantDetail? _tenant;
+    private CubotTravels.Application.Tenancy.TenantApiConfigDto? _api;
+    private bool _apiBusy;
 
     private bool _profileOpen;
     private bool _profileBusy;
@@ -497,7 +551,45 @@ else
         _sub = (await SubsSvc.ListByTenantAsync(_tenantId)).FirstOrDefault();
         _plan = _sub is null ? null : _plans.FirstOrDefault(p => p.Id == _sub.PlanId);
         _payments = (await PaymentsSvc.ListAsync(_tenantId)).ToList();
+        _api = await TenantApiSvc.GetAsync(_tenantId);
         _loading = false;
+    }
+
+    private async Task RegenerateApiKeyAsync()
+    {
+        _apiBusy = true;
+        try { _api = await TenantApiSvc.RegenerateAsync(_tenantId, await ActorAsync()); }
+        finally { _apiBusy = false; }
+    }
+
+    private async Task ToggleApiAsync()
+    {
+        if (_api is null || !_api.HasKey) { return; }
+        _apiBusy = true;
+        try { _api = await TenantApiSvc.SetEnabledAsync(_tenantId, !_api.IsEnabled, await ActorAsync()) ?? _api; }
+        finally { _apiBusy = false; }
+    }
+
+    private async Task Copy(string text)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); } catch { }
+    }
+
+    private string ApiCurl()
+    {
+        var baseUrl = $"{Nav.BaseUri.TrimEnd('/')}";
+        var key = _api?.ApiKey ?? "TU_API_KEY";
+        return $"curl -X POST {baseUrl}/api/public/leads \\\n"
+            + $"  -H \"X-Api-Key: {key}\" \\\n"
+            + "  -H \"Content-Type: application/json\" \\\n"
+            + "  -d '{\n"
+            + "    \"contactName\": \"Juan Perez\",\n"
+            + "    \"contactPhone\": \"573001234567\",\n"
+            + "    \"destination\": \"Cartagena\",\n"
+            + "    \"estimatedValue\": 1500000,\n"
+            + "    \"currency\": \"COP\",\n"
+            + "    \"fields\": { \"adultos\": \"2\", \"ninos\": \"1\", \"comentarios\": \"Viaje de aniversario\" }\n"
+            + "  }'";
     }
 
     private void OpenChange()

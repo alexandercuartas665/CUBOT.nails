@@ -41,6 +41,7 @@ public interface IApplicationDbContext
     DbSet<PlatformBranding> PlatformBrandings { get; }
     DbSet<EmailConfig> EmailConfigs { get; }
     DbSet<GoogleAuthConfig> GoogleAuthConfigs { get; }
+    DbSet<TenantApiConfig> TenantApiConfigs { get; }
     DbSet<PasswordResetToken> PasswordResetTokens { get; }
     DbSet<SuperAdminAuditLog> SuperAdminAuditLogs { get; }
 
