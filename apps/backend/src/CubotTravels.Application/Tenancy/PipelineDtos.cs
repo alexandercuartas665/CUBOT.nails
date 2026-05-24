@@ -22,6 +22,7 @@ public sealed record UpdatePipelineStageRequest(
 
 /// <summary>Nuevo orden de las etapas: lista de ids en el orden deseado.</summary>
 public sealed record ReorderStagesRequest(IReadOnlyList<Guid> OrderedStageIds);
+public sealed record ReorderFieldsRequest(IReadOnlyList<Guid> OrderedFieldIds);
 
 // --- Campos configurables ---
 public sealed record PipelineFieldDto(

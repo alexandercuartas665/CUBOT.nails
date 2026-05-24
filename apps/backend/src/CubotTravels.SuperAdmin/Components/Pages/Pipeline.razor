@@ -520,6 +520,14 @@ else
                                                     {
                                                         <input class="form-control" type="number" @bind="rlist[ci]" />
                                                     }
+                                                    else if (f.FieldType == PipelineFieldType.Date)
+                                                    {
+                                                        <input class="form-control" type="date" value="@rlist[ci]" @onchange="e => rlist[ci] = e.Value?.ToString()" />
+                                                    }
+                                                    else if (f.FieldType == PipelineFieldType.Phone)
+                                                    {
+                                                        <input class="form-control" type="tel" @bind="rlist[ci]" />
+                                                    }
                                                     else
                                                     {
                                                         <input class="form-control" @bind="rlist[ci]" />
@@ -538,6 +546,14 @@ else
                                                 @if (f.FieldType is PipelineFieldType.Number or PipelineFieldType.Currency)
                                                 {
                                                     <input class="form-control" type="number" @bind="mlist[ci]" />
+                                                }
+                                                else if (f.FieldType == PipelineFieldType.Date)
+                                                {
+                                                    <input class="form-control" type="date" value="@mlist[ci]" @onchange="e => mlist[ci] = e.Value?.ToString()" />
+                                                }
+                                                else if (f.FieldType == PipelineFieldType.Phone)
+                                                {
+                                                    <input class="form-control" type="tel" @bind="mlist[ci]" />
                                                 }
                                                 else
                                                 {
@@ -558,6 +574,12 @@ else
                                             case PipelineFieldType.Number:
                                             case PipelineFieldType.Currency:
                                                 <input class="form-control" type="number" @bind="_editValues[f.FieldKey]" />
+                                                break;
+                                            case PipelineFieldType.Date:
+                                                <input class="form-control" type="date" value="@_editValues[f.FieldKey]" @onchange="e => _editValues[f.FieldKey] = e.Value?.ToString()" />
+                                                break;
+                                            case PipelineFieldType.Phone:
+                                                <input class="form-control" type="tel" @bind="_editValues[f.FieldKey]" placeholder="+57 300 000 0000" />
                                                 break;
                                             case PipelineFieldType.Select:
                                                 <select class="form-control" @bind="_editValues[f.FieldKey]">
@@ -1186,9 +1208,15 @@ else
                 @{
                     var numericFields = cfgFields.Where(x => x.FieldType is PipelineFieldType.Number && (_editingFieldId is null || x.Id != _editingFieldId)).ToList();
                 }
-                @foreach (var f in cfgFields)
+                @for (int fi = 0; fi < cfgFields.Count; fi++)
                 {
+                    var f = cfgFields[fi];
+                    var idx = fi;
                     <div class="cfg-row">
+                        <div style="display:flex;flex-direction:column;gap:2px;flex:none;">
+                            <button class="btn btn-outline-secondary" style="padding:0 6px;line-height:1.3;" disabled="@(idx == 0 || _busy)" @onclick="() => MoveFieldAsync(cfgFields, idx, idx - 1)" title="Subir">&uarr;</button>
+                            <button class="btn btn-outline-secondary" style="padding:0 6px;line-height:1.3;" disabled="@(idx == cfgFields.Count - 1 || _busy)" @onclick="() => MoveFieldAsync(cfgFields, idx, idx + 1)" title="Bajar">&darr;</button>
+                        </div>
                         <div class="grow">
                             <div style="font-weight:600;font-size:13px;">
                                 @f.Label
@@ -1218,6 +1246,8 @@ else
                                 <option value="@PipelineFieldType.Text">Texto</option>
                                 <option value="@PipelineFieldType.Number">Numero</option>
                                 <option value="@PipelineFieldType.Currency">Moneda</option>
+                                <option value="@PipelineFieldType.Date">Fecha</option>
+                                <option value="@PipelineFieldType.Phone">Telefono</option>
                                 <option value="@PipelineFieldType.TextArea">Texto largo</option>
                                 <option value="@PipelineFieldType.Select">Lista</option>
                             </select>
@@ -2421,6 +2451,23 @@ else
         {
             var actor = await ActorAsync();
             await PipelineSvc.DeleteFieldAsync(fieldId, actor);
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task MoveFieldAsync(List<PipelineFieldDto> stageFields, int from, int to)
+    {
+        if (to < 0 || to >= stageFields.Count) { return; }
+        var ordered = stageFields.Select(f => f.Id).ToList();
+        var moved = ordered[from];
+        ordered.RemoveAt(from);
+        ordered.Insert(to, moved);
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await PipelineSvc.ReorderFieldsAsync(new ReorderFieldsRequest(ordered), actor);
             await ReloadAsync();
         }
         finally { _busy = false; }

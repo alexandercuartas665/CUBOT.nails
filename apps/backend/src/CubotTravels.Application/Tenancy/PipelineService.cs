@@ -245,6 +245,18 @@ public sealed class PipelineService : IPipelineService
         return new PipelineFieldDto(field.Id, field.StageId, field.FieldKey, field.Label, field.FieldType, field.Column, field.SortOrder, field.Options, field.Description, field.AllowMultiple, field.RepeatWithFieldKey);
     }
 
+    public async Task ReorderFieldsAsync(ReorderFieldsRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var fields = await _db.PipelineFieldDefinitions.ToListAsync(cancellationToken);
+        var order = 0;
+        foreach (var id in request.OrderedFieldIds)
+        {
+            var field = fields.FirstOrDefault(f => f.Id == id);
+            if (field is not null) { field.SortOrder = order++; }
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<bool> DeleteFieldAsync(Guid fieldId, Guid actorUserId, CancellationToken cancellationToken = default)
     {
         var field = await _db.PipelineFieldDefinitions.FirstOrDefaultAsync(f => f.Id == fieldId, cancellationToken);

@@ -7,5 +7,7 @@ public enum PipelineFieldType
     Number,
     Currency,
     TextArea,
-    Select
+    Select,
+    Date,
+    Phone
 }
