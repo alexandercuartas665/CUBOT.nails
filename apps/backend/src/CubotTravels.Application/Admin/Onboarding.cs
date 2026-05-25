@@ -10,7 +10,9 @@ public sealed record OnboardTenantRequest(
     string? Country = null,
     string? Currency = null,
     Guid? PlanId = null,
-    BillingFrequency BillingFrequency = BillingFrequency.Monthly);
+    BillingFrequency BillingFrequency = BillingFrequency.Monthly,
+    // Cuando viene un subject de Google, el admin se crea sin clave (login via Google).
+    string? GoogleSubject = null);
 
 public sealed record OnboardingResult(
     Guid TenantId,

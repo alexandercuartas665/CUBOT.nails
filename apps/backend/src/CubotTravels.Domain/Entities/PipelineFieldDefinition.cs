@@ -36,6 +36,18 @@ public class PipelineFieldDefinition : TenantEntity
     public bool AllowMultiple { get; set; }
 
     /// <summary>
+    /// Solo para campos AllowMultiple: cada valor lleva ademas un texto de detalle (descripcion).
+    /// Se guarda como arreglo JSON de objetos {"d":detalle,"v":valor}. El detalle va primero.
+    /// </summary>
+    public bool MultiWithDetail { get; set; }
+
+    /// <summary>
+    /// Solo para FieldType=Total: lista de FieldKeys (separados por coma) de los campos numericos/moneda
+    /// de la misma etapa que se suman para calcular el total. Los campos multiples suman todos sus registros.
+    /// </summary>
+    public string? TotalSourceKeys { get; set; }
+
+    /// <summary>
     /// Si se indica el FieldKey de un campo numerico de la misma etapa, este campo se repite N veces
     /// segun el valor de ese campo (p.ej. "edades" se repite tantas veces como diga "ninos"). Los
     /// valores se guardan como arreglo JSON.

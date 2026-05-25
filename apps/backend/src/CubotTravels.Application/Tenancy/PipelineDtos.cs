@@ -36,7 +36,9 @@ public sealed record PipelineFieldDto(
     string? Options,
     string? Description = null,
     bool AllowMultiple = false,
-    string? RepeatWithFieldKey = null);
+    string? RepeatWithFieldKey = null,
+    bool MultiWithDetail = false,
+    string? TotalSourceKeys = null);
 
 public sealed record CreatePipelineFieldRequest(
     Guid StageId,
@@ -47,7 +49,9 @@ public sealed record CreatePipelineFieldRequest(
     string? FieldKey = null,
     string? Description = null,
     bool AllowMultiple = false,
-    string? RepeatWithFieldKey = null);
+    string? RepeatWithFieldKey = null,
+    bool MultiWithDetail = false,
+    string? TotalSourceKeys = null);
 
 public sealed record UpdatePipelineFieldRequest(
     string Label,
@@ -56,4 +60,6 @@ public sealed record UpdatePipelineFieldRequest(
     string? Options,
     string? Description = null,
     bool AllowMultiple = false,
-    string? RepeatWithFieldKey = null);
+    string? RepeatWithFieldKey = null,
+    bool MultiWithDetail = false,
+    string? TotalSourceKeys = null);

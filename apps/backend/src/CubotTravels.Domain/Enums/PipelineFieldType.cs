@@ -9,5 +9,8 @@ public enum PipelineFieldType
     TextArea,
     Select,
     Date,
-    Phone
+    Phone,
+    /// <summary>Campo calculado de solo lectura: suma los valores de los campos origen indicados
+    /// en TotalSourceKeys (si un origen es multiple/repetido, suma todos sus registros).</summary>
+    Total
 }

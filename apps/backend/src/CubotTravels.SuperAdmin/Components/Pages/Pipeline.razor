@@ -352,7 +352,7 @@ else
                 <div class="field-row">
                     <div class="field">
                         <label class="form-label">Valor estimado</label>
-                        <input class="form-control" type="number" @bind="_nl.EstimatedValue" />
+                        <input class="form-control" type="text" inputmode="numeric" value="@FormatMoneyDecimal(_nl.EstimatedValue)" @onchange="e => _nl.EstimatedValue = ParseMoneyNullable(e.Value?.ToString())" />
                     </div>
                     <div class="field">
                         <label class="form-label">Moneda</label>
@@ -386,7 +386,11 @@ else
 {
     var curIdx = _stages.FindIndex(s => s.Id == _editStageId);
     <div class="modal-overlay">
-        <div class="modal-dialog pl-lead-dialog">
+        <div class="modal-dialog pl-lead-dialog mob-@_leadMobileView">
+          <div class="pl-lead-mobtabs">
+              <button class="@(_leadMobileView == "datos" ? "active" : "")" @onclick='() => _leadMobileView = "datos"'>Datos</button>
+              <button class="@(_leadMobileView == "chat" ? "active" : "")" @onclick='() => _leadMobileView = "chat"'>Chat</button>
+          </div>
           <div class="pl-lead-left">
             <div class="modal-head">
                 <div style="min-width:0;">
@@ -425,6 +429,7 @@ else
 
                 @if (_leadTab == "datos")
                 {
+                <div @oninput="MarkLeadDirty">
                 @* Stepper de etapas *@
                 <div style="display:grid;grid-template-columns:repeat(@_stages.Count,1fr);gap:4px;margin-bottom:18px;">
                     @for (var i = 0; i < _stages.Count; i++)
@@ -458,7 +463,7 @@ else
                         </div>
                         <div class="pl-field">
                             <label class="form-label">Valor estimado</label>
-                            <input class="form-control" type="number" @bind="_el.EstimatedValue" />
+                            <input class="form-control" type="text" inputmode="numeric" value="@FormatMoneyDecimal(_el.EstimatedValue)" @onchange="e => _el.EstimatedValue = ParseMoneyNullable(e.Value?.ToString())" />
                         </div>
                         <div class="pl-field">
                             <label class="form-label">Moneda</label>
@@ -516,7 +521,11 @@ else
                                                 var ci = ri;
                                                 <div class="pl-multi-row">
                                                     <span class="pl-multi-idx">@(ci + 1)</span>
-                                                    @if (f.FieldType is PipelineFieldType.Number or PipelineFieldType.Currency)
+                                                    @if (f.FieldType == PipelineFieldType.Currency)
+                                                    {
+                                                        <input class="form-control" type="text" inputmode="numeric" value="@FormatThousands(rlist[ci])" @onchange="e => rlist[ci] = DigitsToRaw(e.Value?.ToString())" />
+                                                    }
+                                                    else if (f.FieldType == PipelineFieldType.Number)
                                                     {
                                                         <input class="form-control" type="number" @bind="rlist[ci]" />
                                                     }
@@ -539,11 +548,20 @@ else
                                     else if (f.AllowMultiple)
                                     {
                                         var mlist = MultiList(f.FieldKey, -1);
+                                        var dlist = f.MultiWithDetail ? DetailList(f.FieldKey, mlist.Count) : null;
                                         for (int mi = 0; mi < mlist.Count; mi++)
                                         {
                                             var ci = mi;
                                             <div class="pl-multi-row">
-                                                @if (f.FieldType is PipelineFieldType.Number or PipelineFieldType.Currency)
+                                                @if (f.MultiWithDetail && dlist is not null)
+                                                {
+                                                    <input class="form-control pl-multi-detail" placeholder="Detalle" @bind="dlist[ci]" />
+                                                }
+                                                @if (f.FieldType == PipelineFieldType.Currency)
+                                                {
+                                                    <input class="form-control" type="text" inputmode="numeric" value="@FormatThousands(mlist[ci])" @onchange="e => mlist[ci] = DigitsToRaw(e.Value?.ToString())" />
+                                                }
+                                                else if (f.FieldType == PipelineFieldType.Number)
                                                 {
                                                     <input class="form-control" type="number" @bind="mlist[ci]" />
                                                 }
@@ -572,8 +590,10 @@ else
                                                 <textarea class="form-control" rows="2" @bind="_editValues[f.FieldKey]"></textarea>
                                                 break;
                                             case PipelineFieldType.Number:
-                                            case PipelineFieldType.Currency:
                                                 <input class="form-control" type="number" @bind="_editValues[f.FieldKey]" />
+                                                break;
+                                            case PipelineFieldType.Currency:
+                                                <input class="form-control" type="text" inputmode="numeric" value="@FormatThousands(_editValues[f.FieldKey])" @onchange="e => _editValues[f.FieldKey] = DigitsToRaw(e.Value?.ToString())" />
                                                 break;
                                             case PipelineFieldType.Date:
                                                 <input class="form-control" type="date" value="@_editValues[f.FieldKey]" @onchange="e => _editValues[f.FieldKey] = e.Value?.ToString()" />
@@ -590,6 +610,9 @@ else
                                                     }
                                                 </select>
                                                 break;
+                                            case PipelineFieldType.Total:
+                                                <input class="form-control pl-total-field" type="text" readonly value="@FormatMoneyDecimal(ComputeTotal(f))" />
+                                                break;
                                             default:
                                                 <input class="form-control" @bind="_editValues[f.FieldKey]" />
                                                 break;
@@ -600,7 +623,7 @@ else
                         </div>
                     </div>
                 }
-
+                </div>
                 }
 
                 @if (_leadTab == "notas")
@@ -728,9 +751,13 @@ else
                         <button class="btn btn-outline-secondary" @onclick="() => MoveToStageAsync(_stages[curIdx + 1].Id)" disabled="@_busy">@_stages[curIdx + 1].Name &rarr;</button>
                     }
                 </div>
-                <div style="display:flex;gap:8px;">
+                <div style="display:flex;gap:8px;align-items:center;">
+                    @if (_leadSaved && !_leadDirty)
+                    {
+                        <span class="pl-saved-flag">Guardado</span>
+                    }
                     <button class="btn btn-outline-secondary" @onclick="CloseLead">Cerrar</button>
-                    <button class="btn btn-primary" @onclick="SaveLeadAsync" disabled="@_busy">Guardar</button>
+                    <button class="btn @(_leadDirty ? "pl-save-dirty" : "btn-primary")" @onclick="SaveLeadAsync" disabled="@_busy">@(_busy ? "Guardando..." : _leadDirty ? "Guardar cambios" : "Guardar")</button>
                 </div>
             </div>
           </div>
@@ -1250,6 +1277,7 @@ else
                                 <option value="@PipelineFieldType.Phone">Telefono</option>
                                 <option value="@PipelineFieldType.TextArea">Texto largo</option>
                                 <option value="@PipelineFieldType.Select">Lista</option>
+                                <option value="@PipelineFieldType.Total">Total (suma de campos)</option>
                             </select>
                         </div>
                     </div>
@@ -1287,8 +1315,40 @@ else
                                 <input type="checkbox" @bind="_nf.AllowMultiple" />
                                 Permitir varios valores (ej. varios telefonos)
                             </label>
+                            @if (_nf.AllowMultiple)
+                            {
+                                <label class="form-check" style="display:flex;align-items:center;gap:8px;font-weight:500;margin-top:8px;">
+                                    <input type="checkbox" @bind="_nf.MultiWithDetail" />
+                                    Incluir detalle por valor (un texto antes de cada valor)
+                                </label>
+                            }
                         </div>
                     </div>
+                    @if (_nf.FieldType == PipelineFieldType.Total)
+                    {
+                        var summables = cfgFields.Where(x => x.FieldType is PipelineFieldType.Number or PipelineFieldType.Currency && (_editingFieldId is null || x.Id != _editingFieldId)).ToList();
+                        <div class="field">
+                            <label class="form-label">Campos a sumar</label>
+                            @if (summables.Count == 0)
+                            {
+                                <div class="text-muted" style="font-size:11.5px;">No hay campos numericos o de moneda en esta etapa. Crea primero los campos a sumar.</div>
+                            }
+                            else
+                            {
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    @foreach (var sf in summables)
+                                    {
+                                        var skey = sf.FieldKey;
+                                        <label class="form-check" style="display:flex;align-items:center;gap:8px;font-weight:500;">
+                                            <input type="checkbox" checked="@_nf.TotalSourceKeys.Contains(skey)" @onchange="e => ToggleTotalSource(skey, (bool)(e.Value ?? false))" />
+                                            @sf.Label @(sf.AllowMultiple ? "(suma todos los registros)" : "")
+                                        </label>
+                                    }
+                                </div>
+                                <div class="text-muted" style="font-size:11px;">El total se calcula solo y es de solo lectura.</div>
+                            }
+                        </div>
+                    }
                     @if (_cfgFieldMsg is not null)
                     {
                         <div class="text-danger small">@_cfgFieldMsg</div>
@@ -1341,6 +1401,8 @@ else
 
     // Detalle de lead
     private bool _leadOpen;
+    private bool _leadDirty;   // hay cambios sin guardar (resalta el boton Guardar)
+    private bool _leadSaved;   // se guardo al menos una vez en esta apertura (muestra "Guardado")
     private string? _leadError;
     private LeadDto? _editLead;
     private Guid _editStageId;
@@ -1348,6 +1410,8 @@ else
     private Dictionary<string, string?> _editValues = new();
     // Valores de campos "multiples" o "repetidos" (lista por FieldKey); se guardan como arreglo JSON.
     private Dictionary<string, List<string?>> _multiValues = new();
+    // Detalles paralelos a _multiValues para campos "multiples con detalle" (texto antes de cada valor).
+    private Dictionary<string, List<string?>> _multiDetails = new();
     private List<LeadActivityDto> _activities = new();
     private List<LeadNoteDto> _notes = new();
     private string _noteText = string.Empty;
@@ -1356,6 +1420,7 @@ else
     private bool _fileBusy;
     private string? _fileError;
     private string _leadTab = "datos";
+    private string _leadMobileView = "datos";   // en movil alterna entre panel de datos y chat
     private static readonly string[] NoteColors = { "yellow", "green", "blue", "pink", "purple", "gray" };
 
     // Historial / archivar
@@ -2018,7 +2083,10 @@ else
         if (detail is null) { return; }
         _editLead = detail.Lead;
         _editStageId = detail.Lead.StageId;
+        _leadDirty = false;
+        _leadSaved = false;
         _leadTab = "datos";
+        _leadMobileView = "datos";
         _activities = detail.Activities.OrderByDescending(a => a.CreatedAt).ToList();
         _notes = (await LeadsSvc.ListNotesAsync(leadId)).ToList();
         _noteText = string.Empty;
@@ -2035,10 +2103,17 @@ else
         };
         _editValues = new Dictionary<string, string?>();
         _multiValues = new Dictionary<string, List<string?>>();
+        _multiDetails = new Dictionary<string, List<string?>>();
         foreach (var f in _fields)
         {
             var raw = detail.Lead.FieldValues.TryGetValue(f.FieldKey, out var v) ? v : null;
-            if (f.AllowMultiple || !string.IsNullOrEmpty(f.RepeatWithFieldKey))
+            if (f.AllowMultiple && f.MultiWithDetail)
+            {
+                var (details, values) = ParseMultiDetail(raw);
+                _multiValues[f.FieldKey] = values;
+                _multiDetails[f.FieldKey] = details;
+            }
+            else if (f.AllowMultiple || !string.IsNullOrEmpty(f.RepeatWithFieldKey))
             {
                 _multiValues[f.FieldKey] = ParseMulti(raw);
             }
@@ -2207,7 +2282,21 @@ else
             // Campos de multiples valores / repetidos: se guardan como arreglo JSON.
             foreach (var kv in _multiValues)
             {
-                values[kv.Key] = SerializeMulti(kv.Value);
+                if (_multiDetails.TryGetValue(kv.Key, out var dets))
+                {
+                    // Campo multiple con detalle: arreglo de objetos {d:detalle, v:valor}.
+                    values[kv.Key] = SerializeMultiDetail(dets, kv.Value);
+                }
+                else
+                {
+                    values[kv.Key] = SerializeMulti(kv.Value);
+                }
+            }
+            // Campos Total: se calculan y se guardan como valor invariante para vistas/reportes/API.
+            foreach (var tf in _fields.Where(x => x.FieldType == PipelineFieldType.Total))
+            {
+                var total = ComputeTotal(tf);
+                values[tf.FieldKey] = total.ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
             var req = new UpdateLeadRequest(_el.ContactName, _el.ContactPhone, _el.Destination,
                 _el.EstimatedValue, _el.Currency, values);
@@ -2217,12 +2306,21 @@ else
                 ReplaceLead(updated);
                 _editLead = updated;
             }
-            _leadOpen = false;
+            // No cerramos el modal: el usuario sigue editando y cierra cuando quiera.
+            _leadDirty = false;
+            _leadSaved = true;
+            _leadError = null;
         }
         finally
         {
             _busy = false;
         }
+    }
+
+    // Marca el formulario del lead como "con cambios sin guardar" (resalta el boton Guardar).
+    private void MarkLeadDirty()
+    {
+        _leadDirty = true;
     }
 
     private async Task MoveToStageAsync(Guid stageId)
@@ -2404,15 +2502,18 @@ else
             var actor = await ActorAsync();
             var options = string.IsNullOrWhiteSpace(_nf.Options) ? null : _nf.Options!.Replace(",", "\n").Trim();
             var repeat = string.IsNullOrWhiteSpace(_nf.RepeatWithFieldKey) ? null : _nf.RepeatWithFieldKey;
+            var totalKeys = _nf.FieldType == PipelineFieldType.Total && _nf.TotalSourceKeys.Count > 0
+                ? string.Join(",", _nf.TotalSourceKeys)
+                : null;
             if (_editingFieldId is Guid editId)
             {
                 await PipelineSvc.UpdateFieldAsync(editId,
-                    new UpdatePipelineFieldRequest(_nf.Label!, _nf.FieldType, _nf.Column, options, _nf.Description, _nf.AllowMultiple, repeat), actor);
+                    new UpdatePipelineFieldRequest(_nf.Label!, _nf.FieldType, _nf.Column, options, _nf.Description, _nf.AllowMultiple, repeat, _nf.MultiWithDetail, totalKeys), actor);
             }
             else
             {
                 await PipelineSvc.CreateFieldAsync(
-                    new CreatePipelineFieldRequest(_cfgStageId, _nf.Label!, _nf.FieldType, _nf.Column, options, null, _nf.Description, _nf.AllowMultiple, repeat), actor);
+                    new CreatePipelineFieldRequest(_cfgStageId, _nf.Label!, _nf.FieldType, _nf.Column, options, null, _nf.Description, _nf.AllowMultiple, repeat, _nf.MultiWithDetail, totalKeys), actor);
             }
             _nf = new NewFieldForm();
             _editingFieldId = null;
@@ -2433,8 +2534,18 @@ else
             Options = f.Options,
             Description = f.Description,
             AllowMultiple = f.AllowMultiple,
-            RepeatWithFieldKey = f.RepeatWithFieldKey
+            RepeatWithFieldKey = f.RepeatWithFieldKey,
+            MultiWithDetail = f.MultiWithDetail,
+            TotalSourceKeys = string.IsNullOrWhiteSpace(f.TotalSourceKeys)
+                ? new List<string>()
+                : f.TotalSourceKeys.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
         };
+    }
+
+    private void ToggleTotalSource(string key, bool on)
+    {
+        if (on) { if (!_nf.TotalSourceKeys.Contains(key)) { _nf.TotalSourceKeys.Add(key); } }
+        else { _nf.TotalSourceKeys.Remove(key); }
     }
 
     private void CancelEditField()
@@ -2490,6 +2601,82 @@ else
     }
 
     private static string Money(decimal v, string? currency) => $"$ {v:N0}{(string.IsNullOrWhiteSpace(currency) ? "" : " " + currency)}";
+
+    // Convencion del sistema: coma = separador de miles, punto = decimal (3,500,000.50).
+    // Da formato a un decimal: 3500000 -> "3,500,000".
+    private static string FormatMoneyDecimal(decimal? v)
+    {
+        if (v is not decimal d) { return string.Empty; }
+        var c = System.Globalization.CultureInfo.InvariantCulture;
+        return d == Math.Truncate(d) ? d.ToString("#,##0", c) : d.ToString("#,##0.##", c);
+    }
+
+    // Convierte el valor crudo guardado (invariante: punto = decimal) al texto con separadores de miles.
+    private static string FormatThousands(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) { return string.Empty; }
+        // El valor guardado esta en formato invariante (ej "1000000" o "1000000.5").
+        if (!decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            && !TryParseMoney(raw!, out value))
+        {
+            return raw!;
+        }
+        return FormatMoneyDecimal(value);
+    }
+
+    // Limpia el texto editado (coma = miles, punto = decimal) y lo guarda en formato invariante.
+    private static string DigitsToRaw(string? formatted)
+    {
+        if (string.IsNullOrWhiteSpace(formatted)) { return string.Empty; }
+        if (!TryParseMoney(formatted!, out var value)) { return string.Empty; }
+        return value == Math.Truncate(value)
+            ? ((long)value).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    // Igual que DigitsToRaw pero devuelve decimal? para los campos fijos (Valor estimado).
+    private static decimal? ParseMoneyNullable(string? formatted)
+    {
+        if (string.IsNullOrWhiteSpace(formatted)) { return null; }
+        return TryParseMoney(formatted!, out var value) ? value : null;
+    }
+
+    // Texto del usuario: la coma es separador de miles y el punto es decimal (formato del sistema).
+    private static bool TryParseMoney(string s, out decimal value)
+    {
+        var cleaned = new string(s.Where(c => char.IsDigit(c) || c == ',' || c == '.').ToArray());
+        if (cleaned.Length == 0) { value = 0; return false; }
+        cleaned = cleaned.Replace(",", string.Empty); // quitar separador de miles; el punto queda como decimal
+        return decimal.TryParse(cleaned, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value);
+    }
+
+    // Suma de un campo Total: recorre sus campos origen; los multiples/repetidos suman todos sus registros.
+    private decimal ComputeTotal(PipelineFieldDto totalField)
+    {
+        if (string.IsNullOrWhiteSpace(totalField.TotalSourceKeys)) { return 0m; }
+        var keys = totalField.TotalSourceKeys.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        decimal sum = 0m;
+        foreach (var key in keys)
+        {
+            if (_multiValues.TryGetValue(key, out var list))
+            {
+                foreach (var item in list) { if (TryNum(item, out var n)) { sum += n; } }
+            }
+            else if (_editValues.TryGetValue(key, out var sv) && TryNum(sv, out var nv))
+            {
+                sum += nv;
+            }
+        }
+        return sum;
+    }
+
+    private static bool TryNum(string? s, out decimal value)
+    {
+        value = 0m;
+        if (string.IsNullOrWhiteSpace(s)) { return false; }
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value)
+            || TryParseMoney(s!, out value);
+    }
 
     private string StageName(Guid stageId) => _stages.FirstOrDefault(s => s.Id == stageId)?.Name ?? "—";
 
@@ -2564,6 +2751,7 @@ else
     {
         if (!_multiValues.TryGetValue(key, out var list)) { list = new List<string?>(); _multiValues[key] = list; }
         list.Add(null);
+        if (_multiDetails.TryGetValue(key, out var dets)) { dets.Add(null); }
     }
 
     private void RemoveMulti(string key, int index)
@@ -2571,8 +2759,63 @@ else
         if (_multiValues.TryGetValue(key, out var list) && index >= 0 && index < list.Count)
         {
             list.RemoveAt(index);
-            if (list.Count == 0) { list.Add(null); }
+            if (_multiDetails.TryGetValue(key, out var dets) && index < dets.Count) { dets.RemoveAt(index); }
+            if (list.Count == 0) { list.Add(null); if (_multiDetails.ContainsKey(key)) { _multiDetails[key].Add(null); } }
         }
+    }
+
+    // Lista de detalles paralela a los valores del campo multiple (mismo tamano).
+    private List<string?> DetailList(string key, int count)
+    {
+        if (!_multiDetails.TryGetValue(key, out var list)) { list = new List<string?>(); _multiDetails[key] = list; }
+        while (list.Count < count) { list.Add(null); }
+        while (list.Count > count) { list.RemoveAt(list.Count - 1); }
+        return list;
+    }
+
+    private sealed class MultiDetailItem { public string? d { get; set; } public string? v { get; set; } }
+
+    // Lee el arreglo JSON de objetos {d,v}. Tolera el formato viejo (arreglo simple de strings).
+    private (List<string?> details, List<string?> values) ParseMultiDetail(string? raw)
+    {
+        var details = new List<string?>();
+        var values = new List<string?>();
+        if (string.IsNullOrWhiteSpace(raw)) { return (details, values); }
+        if (raw.TrimStart().StartsWith("["))
+        {
+            try
+            {
+                var arr = System.Text.Json.JsonSerializer.Deserialize<List<MultiDetailItem>>(raw);
+                if (arr is not null)
+                {
+                    foreach (var it in arr) { details.Add(it.d); values.Add(it.v); }
+                    return (details, values);
+                }
+            }
+            catch
+            {
+                // Formato anterior: arreglo simple de valores sin detalle.
+                foreach (var s in ParseMulti(raw)) { details.Add(null); values.Add(s); }
+                return (details, values);
+            }
+        }
+        details.Add(null);
+        values.Add(raw);
+        return (details, values);
+    }
+
+    private static string? SerializeMultiDetail(List<string?> details, List<string?> values)
+    {
+        var items = new List<MultiDetailItem>();
+        var n = Math.Max(details.Count, values.Count);
+        for (var i = 0; i < n; i++)
+        {
+            var d = i < details.Count ? details[i]?.Trim() : null;
+            var v = i < values.Count ? values[i]?.Trim() : null;
+            if (string.IsNullOrEmpty(d) && string.IsNullOrEmpty(v)) { continue; }
+            items.Add(new MultiDetailItem { d = d, v = v });
+        }
+        return items.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(items);
     }
 
     // ===== Datos enriquecidos de la tarjeta =====
@@ -2783,5 +3026,7 @@ else
         public string? Description { get; set; }
         public bool AllowMultiple { get; set; }
         public string? RepeatWithFieldKey { get; set; }
+        public bool MultiWithDetail { get; set; }
+        public List<string> TotalSourceKeys { get; set; } = new();
     }
 }

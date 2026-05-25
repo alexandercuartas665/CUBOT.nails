@@ -26,7 +26,12 @@ public sealed class OnboardingService : IOnboardingService
     public async Task<OnboardingOutcome> OnboardAsync(OnboardTenantRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
     {
         var email = request.AdminEmail.Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(request.AdminPassword))
+        var isGoogle = !string.IsNullOrWhiteSpace(request.GoogleSubject);
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new OnboardingOutcome(false, null, "El correo del administrador es obligatorio.");
+        }
+        if (!isGoogle && string.IsNullOrWhiteSpace(request.AdminPassword))
         {
             return new OnboardingOutcome(false, null, "Correo y clave del administrador son obligatorios.");
         }
@@ -54,10 +59,11 @@ public sealed class OnboardingService : IOnboardingService
         {
             Email = email,
             DisplayName = request.AdminDisplayName?.Trim(),
-            EmailVerified = false,
+            EmailVerified = isGoogle,
             Status = PlatformUserStatus.Active,
-            AuthProvider = "local",
-            PasswordHash = _passwordHasher.Hash(request.AdminPassword)
+            AuthProvider = isGoogle ? "google" : "local",
+            GoogleSubject = isGoogle ? request.GoogleSubject : null,
+            PasswordHash = isGoogle ? null : _passwordHasher.Hash(request.AdminPassword)
         };
 
         _db.Tenants.Add(tenant);

@@ -30,8 +30,11 @@ public interface IGoogleSignInService
     /// <summary>Arma la URL de challenge hacia Google. Null si el login con Google no esta configurado/habilitado.</summary>
     Task<string?> BuildAuthorizeUrlAsync(string redirectUri, string state, CancellationToken cancellationToken = default);
 
-    /// <summary>Intercambia el code, valida la identidad y resuelve el usuario de CUBOT (sin auto-registro).</summary>
-    Task<GoogleSignInResult> ResolveAsync(string code, string redirectUri, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Intercambia el code y resuelve el usuario de CUBOT. Si el correo no existe y se entrega
+    /// <paramref name="signupAgencyName"/>, crea una agencia nueva con ese Google como dueno (auto-registro).
+    /// </summary>
+    Task<GoogleSignInResult> ResolveAsync(string code, string redirectUri, string? signupAgencyName = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -46,12 +49,14 @@ public sealed class GoogleSignInService : IGoogleSignInService
     private readonly IGoogleAuthConfigService _config;
     private readonly IGoogleOAuthClient _client;
     private readonly IApplicationDbContext _db;
+    private readonly IOnboardingService _onboarding;
 
-    public GoogleSignInService(IGoogleAuthConfigService config, IGoogleOAuthClient client, IApplicationDbContext db)
+    public GoogleSignInService(IGoogleAuthConfigService config, IGoogleOAuthClient client, IApplicationDbContext db, IOnboardingService onboarding)
     {
         _config = config;
         _client = client;
         _db = db;
+        _onboarding = onboarding;
     }
 
     public async Task<string?> BuildAuthorizeUrlAsync(string redirectUri, string state, CancellationToken cancellationToken = default)
@@ -74,7 +79,7 @@ public sealed class GoogleSignInService : IGoogleSignInService
         return $"{AuthEndpoint}?{qs}";
     }
 
-    public async Task<GoogleSignInResult> ResolveAsync(string code, string redirectUri, CancellationToken cancellationToken = default)
+    public async Task<GoogleSignInResult> ResolveAsync(string code, string redirectUri, string? signupAgencyName = null, CancellationToken cancellationToken = default)
     {
         var creds = await _config.GetCredentialsAsync(cancellationToken);
         if (creds is null)
@@ -94,9 +99,33 @@ public sealed class GoogleSignInService : IGoogleSignInService
 
         var email = identity.Email.Trim().ToLowerInvariant();
 
-        // Resolver el usuario existente por subject de Google o por correo verificado. Sin auto-registro.
+        // Resolver el usuario existente por subject de Google o por correo verificado.
         var user = await _db.PlatformUsers
             .FirstOrDefaultAsync(u => u.GoogleSubject == identity.Subject || u.Email == email, cancellationToken);
+
+        // Correo desconocido: si el visitante venia del formulario "Crear cuenta" con un nombre de
+        // agencia, creamos su agencia y lo dejamos como Owner (auto-registro con Google).
+        if (user is null && !string.IsNullOrWhiteSpace(signupAgencyName))
+        {
+            var outcome = await _onboarding.OnboardAsync(
+                new OnboardTenantRequest(
+                    TenantName: signupAgencyName.Trim(),
+                    AdminEmail: email,
+                    AdminPassword: string.Empty,
+                    AdminDisplayName: identity.Name,
+                    GoogleSubject: identity.Subject),
+                actorUserId: Guid.Empty,
+                cancellationToken);
+
+            if (!outcome.Success || outcome.Result is null)
+            {
+                return new GoogleSignInResult(false, outcome.Error ?? "No se pudo crear la cuenta con Google.");
+            }
+
+            return new GoogleSignInResult(true, null, outcome.Result.AdminUserId,
+                identity.Name ?? email, outcome.Result.AdminEmail,
+                TenantId: outcome.Result.TenantId, TenantRole: TenantRole.Owner.ToString());
+        }
 
         if (user is null || user.Status != PlatformUserStatus.Active)
         {

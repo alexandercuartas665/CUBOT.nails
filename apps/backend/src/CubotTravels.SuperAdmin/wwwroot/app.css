@@ -270,6 +270,8 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .auth-provider { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--background); font-size: .9rem; font-weight: 600; color: var(--foreground); cursor: pointer; }
 .auth-provider[disabled] { opacity: .65; cursor: not-allowed; }
 .auth-provider small { font-size: .68rem; color: var(--muted-foreground); font-weight: 600; }
+.auth-hint { margin: -8px 0 14px; font-size: .8rem; color: #dc2626; }
+.auth-input-error { border-color: #dc2626 !important; box-shadow: 0 0 0 3px rgba(220, 38, 38, .12); }
 .auth-divider { position: relative; text-align: center; margin: 18px 0; }
 .auth-divider::before { content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: var(--border); }
 .auth-divider span { position: relative; background: #fff; padding: 0 12px; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: var(--muted-foreground); }
@@ -772,7 +774,19 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .pl-media-doc { display: inline-block; font-size: 12.5px; text-decoration: underline; margin-bottom: 4px; }
 .pl-bubble.out .pl-media-doc { color: #fff; }
 
-@media (max-width: 880px) { .pl-lead-dialog { flex-direction: column; max-height: 94vh; } .pl-chat { border-left: none; border-top: 1px solid var(--border); min-height: 320px; } }
+/* Toggle Datos/Chat: solo visible en movil. */
+.pl-lead-mobtabs { display: none; }
+@media (max-width: 880px) {
+    .pl-lead-dialog { flex-direction: column; max-height: 94vh; }
+    .pl-lead-mobtabs { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); background: var(--card); flex: 0 0 auto; }
+    .pl-lead-mobtabs button { flex: 1; padding: 9px; border: 1px solid var(--border); border-radius: 9px; background: var(--muted); font-weight: 700; font-size: 13px; color: var(--muted-foreground); cursor: pointer; }
+    .pl-lead-mobtabs button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    /* Mostrar solo el panel seleccionado y dejar que ocupe el alto disponible. */
+    .pl-lead-dialog .pl-lead-left, .pl-lead-dialog .pl-chat { flex: 1 1 auto; max-height: none; min-height: 0; }
+    .pl-lead-dialog.mob-datos .pl-chat { display: none; }
+    .pl-lead-dialog.mob-chat .pl-lead-left { display: none; }
+    .pl-chat { border-left: none; border-top: 1px solid var(--border); }
+}
 
 /* ===== Pipeline modal: campos por etapa ===== */
 .pl-stagegroup { margin-bottom: 18px; }
@@ -785,6 +799,13 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .pl-multi-del { flex: none; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); color: var(--destructive); cursor: pointer; line-height: 1; font-size: 16px; }
 .pl-multi-add { border: 1px dashed var(--border); border-radius: 7px; background: none; color: var(--primary); font-size: 12px; font-weight: 600; padding: 4px 10px; cursor: pointer; }
 .cfg-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 5px; background: var(--primary-soft); color: var(--primary); margin-left: 6px; }
+/* Boton Guardar con cambios pendientes en el modal del lead: color ambar para llamar la atencion. */
+.pl-save-dirty { background: #f59e0b; border: 1px solid #f59e0b; color: #1f2937; font-weight: 700; box-shadow: 0 0 0 3px rgba(245, 158, 11, .18); }
+.pl-save-dirty:hover { background: #d97706; border-color: #d97706; color: #fff; }
+.pl-saved-flag { font-size: 12px; font-weight: 600; color: #16a34a; display: inline-flex; align-items: center; gap: 4px; }
+.pl-saved-flag::before { content: "✓"; font-weight: 700; }
+/* Campo Total (solo lectura, calculado). */
+.pl-total-field { background: var(--muted); font-weight: 700; color: var(--primary); }
 .cfg-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 0.6rem; background: var(--card); margin-bottom: 6px; }
 .cfg-row .grow { flex: 1; min-width: 0; }
 

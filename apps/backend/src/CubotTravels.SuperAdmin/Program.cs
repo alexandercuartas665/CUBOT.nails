@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using CubotTravels.Application;
 using CubotTravels.Application.Common;
@@ -14,6 +15,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Formato numerico uniforme en todo el sistema, independiente del locale del servidor (dev o Railway):
+// coma = separador de miles, punto = decimal (ej. 3,500,000.50). Evita que el host cambie como se ven los montos.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -217,8 +223,11 @@ app.MapPost("/auth/reset", async (
 }).DisableAntiforgery();
 
 // Inicia el flujo OIDC con Google: arma la URL de challenge y guarda un state (proteccion CSRF).
+// Con mode=signup se recuerda el nombre de la agencia para crear el tenant al volver del callback.
 app.MapGet("/connect/google", async (
     HttpContext http,
+    [FromQuery] string? mode,
+    [FromQuery] string? agency,
     CubotTravels.Application.Auth.IGoogleSignInService google) =>
 {
     var redirectUri = $"{http.Request.Scheme}://{http.Request.Host}/signin-google";
@@ -226,14 +235,25 @@ app.MapGet("/connect/google", async (
     var url = await google.BuildAuthorizeUrlAsync(redirectUri, state);
     if (url is null) { return Results.Redirect("/login?gerror=" + Uri.EscapeDataString("El ingreso con Google no esta habilitado.")); }
 
-    http.Response.Cookies.Append("g_oauth_state", state, new CookieOptions
+    var cookieOpts = new CookieOptions
     {
         HttpOnly = true,
         SameSite = SameSiteMode.Lax,
         Secure = http.Request.IsHttps,
         MaxAge = TimeSpan.FromMinutes(10),
         Path = "/"
-    });
+    };
+    http.Response.Cookies.Append("g_oauth_state", state, cookieOpts);
+
+    var isSignup = string.Equals(mode, "signup", StringComparison.OrdinalIgnoreCase);
+    if (isSignup && !string.IsNullOrWhiteSpace(agency))
+    {
+        http.Response.Cookies.Append("g_signup_agency", Uri.EscapeDataString(agency.Trim()), cookieOpts);
+    }
+    else
+    {
+        http.Response.Cookies.Delete("g_signup_agency");
+    }
     return Results.Redirect(url);
 }).AllowAnonymous();
 
@@ -253,15 +273,25 @@ app.MapGet("/signin-google", async (
 
     var expectedState = http.Request.Cookies["g_oauth_state"];
     http.Response.Cookies.Delete("g_oauth_state");
+
+    var signupAgencyRaw = http.Request.Cookies["g_signup_agency"];
+    http.Response.Cookies.Delete("g_signup_agency");
+    var signupAgency = string.IsNullOrWhiteSpace(signupAgencyRaw) ? null : Uri.UnescapeDataString(signupAgencyRaw);
+
     if (string.IsNullOrEmpty(state) || !string.Equals(state, expectedState, StringComparison.Ordinal))
     {
         return Results.Redirect("/login?gerror=" + Uri.EscapeDataString("Sesion de ingreso invalida. Intenta de nuevo."));
     }
 
     var redirectUri = $"{http.Request.Scheme}://{http.Request.Host}/signin-google";
-    var result = await google.ResolveAsync(code, redirectUri);
+    var result = await google.ResolveAsync(code, redirectUri, signupAgency);
     if (!result.Success)
     {
+        // Si venia del formulario de registro, mostramos el error dentro del panel "Crear cuenta".
+        if (signupAgency is not null)
+        {
+            return Results.Redirect("/login?mode=signup&regerror=" + Uri.EscapeDataString(result.Error ?? "No se pudo crear la cuenta con Google."));
+        }
         return Results.Redirect("/login?gerror=" + Uri.EscapeDataString(result.Error ?? "No se pudo iniciar sesion con Google."));
     }
 
