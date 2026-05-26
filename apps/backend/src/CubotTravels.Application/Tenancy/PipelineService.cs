@@ -200,6 +200,12 @@ public sealed class PipelineService : IPipelineService
         }
 
         var key = string.IsNullOrWhiteSpace(request.FieldKey) ? Slugify(request.Label) : request.FieldKey.Trim();
+        // Anti-duplicado: un campo del embudo no puede usar la clave de un campo de sistema (nativo del lead),
+        // para evitar dos "Destino"/"Telefono"/etc. El usuario debe usar el marcador de sistema correspondiente.
+        if (ReservedSystemKeys.Contains(key.ToLowerInvariant()))
+        {
+            return null;
+        }
         var existingKeys = await _db.PipelineFieldDefinitions.Where(f => f.StageId == request.StageId).Select(f => f.FieldKey).ToListAsync(cancellationToken);
         key = EnsureUniqueKey(key, existingKeys);
 
@@ -274,6 +280,18 @@ public sealed class PipelineService : IPipelineService
         await _db.SaveChangesAsync(cancellationToken);
         return true;
     }
+
+    // Claves reservadas que ya existen como campos de sistema (nativos del lead): nombre, telefono,
+    // destino, valor estimado y moneda. No se permite crear campos del embudo con estas claves exactas
+    // (los campos legitimos como "telefonos" o "valorVuelosPax" no colisionan por ser claves distintas).
+    private static readonly HashSet<string> ReservedSystemKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "nombre", "contactname",
+        "telefono", "contactphone",
+        "destino", "destination",
+        "valor", "valor_estimado", "estimatedvalue",
+        "moneda", "currency"
+    };
 
     private static string EnsureUniqueKey(string key, IReadOnlyCollection<string> existing)
     {

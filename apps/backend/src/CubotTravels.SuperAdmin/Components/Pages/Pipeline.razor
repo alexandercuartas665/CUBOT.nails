@@ -2584,8 +2584,13 @@ else
             }
             else
             {
-                await PipelineSvc.CreateFieldAsync(
+                var created = await PipelineSvc.CreateFieldAsync(
                     new CreatePipelineFieldRequest(_cfgStageId, _nf.Label!, _nf.FieldType, _nf.Column, options, null, _nf.Description, _nf.AllowMultiple, repeat, _nf.MultiWithDetail, totalKeys), actor);
+                if (created is null)
+                {
+                    _cfgFieldMsg = "Ese nombre coincide con un campo de sistema del lead (nombre, telefono, destino, valor, moneda). Usa el marcador de sistema en su lugar (ej. {{destination}}).";
+                    return;
+                }
             }
             _nf = new NewFieldForm();
             _editingFieldId = null;
