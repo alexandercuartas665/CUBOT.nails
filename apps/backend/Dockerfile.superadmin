@@ -11,6 +11,17 @@ RUN dotnet publish src/CubotTravels.SuperAdmin/CubotTravels.SuperAdmin.csproj \
 
 # --- runtime ---
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+
+# Chromium para el render de PDF de cotizaciones (modulo Plantillas). PuppeteerSharp lanza este
+# Chrome del sistema via CUBOT_CHROME_PATH (en vez de descargar Chromium en runtime, que ademas
+# fallaria por falta de librerias). apt instala Chromium con todas sus dependencias del sistema.
+# Se deja como capa propia (antes del COPY del codigo) para que se cachee entre cambios de codigo.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       chromium fonts-liberation fonts-noto-color-emoji ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENV CUBOT_CHROME_PATH=/usr/bin/chromium
+
 WORKDIR /app
 COPY --from=build /app/publish ./
 # Railway inyecta PORT; definir en Railway ASPNETCORE_HTTP_PORTS=${{PORT}}.
