@@ -196,7 +196,19 @@ app.MapPost("/auth/register", async (
     }
 
     // No iniciamos sesion: el usuario debe activar la cuenta con el codigo enviado por correo.
-    return Results.Redirect($"/activar?email={Uri.EscapeDataString(result.Email)}&sent=1");
+    // Si la cuenta se creo pero el envio del correo fallo (SMTP mal configurado, etc.), llevamos
+    // al visitante a /activar con un aviso en lugar de a /login con un error opaco. Alli puede
+    // usar "Reenviar codigo" cuando el correo este disponible.
+    var qs = $"email={Uri.EscapeDataString(result.Email)}";
+    if (!string.IsNullOrWhiteSpace(result.EmailDeliveryWarning))
+    {
+        qs += $"&error={Uri.EscapeDataString(result.EmailDeliveryWarning)}";
+    }
+    else
+    {
+        qs += "&sent=1";
+    }
+    return Results.Redirect($"/activar?{qs}");
 }).DisableAntiforgery();
 
 // Activa la cuenta del visitante usando el codigo recibido por correo. Si es valido, inicia

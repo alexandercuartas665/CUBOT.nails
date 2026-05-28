@@ -13,10 +13,13 @@ public sealed record SelfSignupRequest(
     string Password);
 
 /// <summary>
-/// Resultado del auto-registro: ok + ids para iniciar sesion, o el error a mostrar.
-/// La cuenta queda en PendingActivation hasta que el usuario ingrese el codigo enviado por correo.
+/// Resultado del auto-registro. La cuenta queda en PendingActivation hasta que el usuario ingrese
+/// el codigo enviado por correo. Si Success=true pero EmailDeliveryWarning != null, la cuenta SI
+/// se creo y el codigo SI quedo emitido en BD, pero el envio del correo fallo (ej. SMTP mal
+/// configurado): el visitante debe ir a /activar y usar "Reenviar codigo" cuando el correo este
+/// disponible. Solo Success=false significa que la cuenta NO se creo.
 /// </summary>
-public sealed record SelfSignupResult(bool Success, Guid TenantId, Guid AdminUserId, string Email, string? Error);
+public sealed record SelfSignupResult(bool Success, Guid TenantId, Guid AdminUserId, string Email, string? Error, string? EmailDeliveryWarning = null);
 
 public interface ISelfSignupService
 {
@@ -106,9 +109,16 @@ public sealed class SelfSignupService : ISelfSignupService
         var sent = await _email.SendAsync(outcome.Result.AdminEmail, $"Activa tu cuenta en {brand.PlatformName}", html, cancellationToken);
         if (!sent.Ok)
         {
-            // El usuario ya existe; permite reenvio desde la pagina de activacion. Reportamos el error real.
-            return new SelfSignupResult(false, outcome.Result.TenantId, outcome.Result.AdminUserId, outcome.Result.AdminEmail,
-                sent.Error ?? "No se pudo enviar el correo de activacion. Intenta reenviar el codigo.");
+            // La cuenta SI se creo y el codigo SI quedo emitido. Solo fallo el envio del correo.
+            // Devolvemos Success=true con un warning para que el endpoint redirija a /activar y el
+            // visitante pueda pedir reenvio en lugar de quedar atrapado en /login.
+            return new SelfSignupResult(
+                true,
+                outcome.Result.TenantId,
+                outcome.Result.AdminUserId,
+                outcome.Result.AdminEmail,
+                null,
+                sent.Error ?? "No se pudo enviar el correo de activacion. Vuelve a pedir el codigo en unos minutos.");
         }
 
         return new SelfSignupResult(true, outcome.Result.TenantId, outcome.Result.AdminUserId, outcome.Result.AdminEmail, null);
