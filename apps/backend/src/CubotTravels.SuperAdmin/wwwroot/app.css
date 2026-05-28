@@ -736,6 +736,7 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .ag-test-input input { flex: 1; }
 
 /* Separador visual entre campos del lead (tipo de campo Separador) */
+.pl-quote-tplsel { max-width: 200px; font-size: 12.5px; padding: 4px 8px; }
 .pl-field-separator { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; color: var(--primary); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .pl-field-separator::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .pl-chat-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 9px; }

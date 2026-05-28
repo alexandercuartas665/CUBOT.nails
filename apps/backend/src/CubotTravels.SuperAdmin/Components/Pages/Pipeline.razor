@@ -962,6 +962,15 @@ else
                 }
             }
             <div class="pl-quote-actions">
+                @if (_quoteTemplates.Count > 0)
+                {
+                    <select class="form-control pl-quote-tplsel" @bind="_selectedQuoteTemplateId" disabled="@_quoteBusy" title="Plantilla de cotizacion a usar">
+                        @foreach (var t in _quoteTemplates)
+                        {
+                            <option value="@t.Id">@t.Name @(t.IsDefault ? "(predeterminada)" : "")</option>
+                        }
+                    </select>
+                }
                 <button class="btn btn-outline-secondary" @onclick="VerCotizacionAsync" disabled="@_quoteBusy">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                     Ver cotizacion
@@ -1544,6 +1553,9 @@ else
     // Cotizacion (ver / enviar por WhatsApp)
     private bool _sendConfirm, _quoteBusy;
     private string? _quoteMsg;
+    // Plantillas de cotizacion del tenant + la seleccionada para ver/enviar.
+    private List<QuoteTemplateDto> _quoteTemplates = new();
+    private Guid _selectedQuoteTemplateId;
     private string _qrCategory = "saludo";
     private List<MessageTemplateDto> _templates = new();
     private bool _attachOpen;
@@ -2262,6 +2274,11 @@ else
                 _editValues[f.FieldKey] = raw;
             }
         }
+        // Plantillas de cotizacion para el selector (preselecciona la predeterminada).
+        _quoteTemplates = (await QuoteTplSvc.ListAsync()).ToList();
+        var def = _quoteTemplates.FirstOrDefault(t => t.IsDefault) ?? _quoteTemplates.FirstOrDefault();
+        _selectedQuoteTemplateId = def?.Id ?? Guid.Empty;
+
         _leadOpen = true;
         await LoadChatAsync(leadId);
     }
@@ -2390,7 +2407,8 @@ else
     private async Task VerCotizacionAsync()
     {
         if (_editLead is null) { return; }
-        await JS.InvokeVoidAsync("open", $"/cotizacion/{_editLead.Id}", "_blank");
+        var q = _selectedQuoteTemplateId != Guid.Empty ? $"?templateId={_selectedQuoteTemplateId}" : "";
+        await JS.InvokeVoidAsync("open", $"/cotizacion/{_editLead.Id}{q}", "_blank");
     }
 
     // Genera el PDF de la cotizacion y lo envia por WhatsApp usando la linea activa de la conversacion.
@@ -2401,11 +2419,13 @@ else
         _quoteBusy = true;
         try
         {
-            // Formato segun la plantilla predeterminada de la agencia: imagen (PNG) o PDF adjunto.
-            var defaultTpl = (await QuoteTplSvc.ListAsync()).FirstOrDefault(t => t.IsDefault);
-            var asImage = defaultTpl?.SendAsImage ?? false;
+            // Formato segun la plantilla SELECCIONADA: imagen (PNG) o PDF adjunto.
+            var tpl = _quoteTemplates.FirstOrDefault(t => t.Id == _selectedQuoteTemplateId)
+                      ?? _quoteTemplates.FirstOrDefault(t => t.IsDefault);
+            var asImage = tpl?.SendAsImage ?? false;
 
-            var url = $"{Nav.BaseUri.TrimEnd('/')}/cotizacion/{_editLead.Id}";
+            var q = _selectedQuoteTemplateId != Guid.Empty ? $"?templateId={_selectedQuoteTemplateId}" : "";
+            var url = $"{Nav.BaseUri.TrimEnd('/')}/cotizacion/{_editLead.Id}{q}";
             var bytes = asImage ? await PdfRenderer.RenderUrlToImageAsync(url) : await PdfRenderer.RenderUrlToPdfAsync(url);
             if (bytes.Length == 0) { _quoteMsg = "No se pudo generar la cotizacion."; return; }
 
