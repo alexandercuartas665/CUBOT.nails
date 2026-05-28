@@ -460,12 +460,8 @@ else
                             <input class="form-control" @bind="_el.ContactPhone" />
                         </div>
                         <div class="pl-field">
-                            <label class="form-label">Destino</label>
+                            <label class="form-label">Origen destino</label>
                             <input class="form-control" @bind="_el.Destination" />
-                        </div>
-                        <div class="pl-field">
-                            <label class="form-label">Valor estimado</label>
-                            <input class="form-control" type="text" inputmode="numeric" value="@FormatMoneyDecimal(_el.EstimatedValue)" @onchange="e => _el.EstimatedValue = ParseMoneyNullable(e.Value?.ToString())" />
                         </div>
                         <div class="pl-field">
                             <label class="form-label">Moneda</label>
