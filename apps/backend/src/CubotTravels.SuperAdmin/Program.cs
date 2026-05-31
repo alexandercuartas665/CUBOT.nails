@@ -86,6 +86,12 @@ if (!app.Environment.IsDevelopment())
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CubotTravelsDbContext>();
         await db.Database.MigrateAsync();
+        // Asegura que el Super Admin tambien sea Owner del tenant interno "Plataforma CUBOT" para
+        // que pueda usar Pipeline, Tableros y los modulos comerciales como una agencia mas. Es
+        // idempotente: si el tenant interno o la membresia ya existen no hace nada. No crea datos
+        // demo. Esto es lo unico del seeder que tiene sentido correr en produccion.
+        var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+        await seeder.EnsurePlatformAdminTenantAsync();
     }
 }
 else
