@@ -66,5 +66,11 @@ public interface IApplicationDbContext
     DbSet<ShiftTemplate> ShiftTemplates { get; }
     DbSet<ScheduleException> ScheduleExceptions { get; }
 
+    // Citas / Agenda (Capa 2).
+    DbSet<Client> Clients { get; }
+    DbSet<Appointment> Appointments { get; }
+    DbSet<AppointmentServiceItem> AppointmentServiceItems { get; }
+    DbSet<AppointmentMessage> AppointmentMessages { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -44,10 +44,13 @@ else
             }
             @foreach (var t in _list)
             {
-                <button class="pl-tpl-item @(_editingId == t.Id ? "active" : "")" @onclick="() => Select(t.Id)">
-                    <div class="nm">@t.Name @if (t.IsDefault) { <span class="pl-tpl-default">predeterminada</span> }</div>
-                    <div class="mt">Actualizada @t.UpdatedAt.LocalDateTime.ToString("dd MMM yyyy HH:mm")</div>
-                </button>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <button class="pl-tpl-item @(_editingId == t.Id ? "active" : "")" style="flex:1;" @onclick="() => Select(t.Id)">
+                        <div class="nm">@t.Name @if (t.IsDefault) { <span class="pl-tpl-default">predeterminada</span> }</div>
+                        <div class="mt">Actualizada @t.UpdatedAt.LocalDateTime.ToString("dd MMM yyyy HH:mm")</div>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" title="Eliminar plantilla" @onclick="() => DeleteByIdAsync(t.Id)" disabled="@_busy">&times;</button>
+                </div>
             }
         </aside>
 
@@ -285,6 +288,25 @@ else
             {
                 await ReloadAsync();
                 if (_list.Count > 0) { Select(_list[0].Id); } else { NewTemplate(); }
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    // Eliminar una plantilla directamente desde la lista (con confirmacion), sin entrar a editarla.
+    private async Task DeleteByIdAsync(Guid id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Eliminar esta plantilla?")) { return; }
+        _busy = true;
+        try
+        {
+            if (await TemplatesSvc.DeleteAsync(id, Guid.Empty))
+            {
+                await ReloadAsync();
+                if (_editingId == id)
+                {
+                    if (_list.Count > 0) { Select(_list[0].Id); } else { NewTemplate(); }
+                }
             }
         }
         finally { _busy = false; }

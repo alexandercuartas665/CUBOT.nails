@@ -84,6 +84,12 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
     public DbSet<ShiftTemplate> ShiftTemplates => Set<ShiftTemplate>();
     public DbSet<ScheduleException> ScheduleExceptions => Set<ScheduleException>();
 
+    // Modulo Citas / Agenda (Capa 2 - nucleo operativo).
+    public DbSet<Client> Clients => Set<Client>();
+    public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<AppointmentServiceItem> AppointmentServiceItems => Set<AppointmentServiceItem>();
+    public DbSet<AppointmentMessage> AppointmentMessages => Set<AppointmentMessage>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         // Todos los enums se persisten como texto (legibles y estables ante reordenamientos).
@@ -116,6 +122,9 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
         configurationBuilder.Properties<ResourceKind>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<ExceptionScope>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<ExceptionReason>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<AppointmentStatus>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<Punctuality>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<BookingChannel>().HaveConversion<string>().HaveMaxLength(40);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -610,6 +619,46 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
         {
             b.Property(x => x.Note).HasMaxLength(500);
             b.HasIndex(x => new { x.TenantId, x.ResourceId, x.DateFrom, x.DateTo });
+        });
+
+        // ---- Modulo Citas / Agenda (nucleo operativo) ----
+
+        modelBuilder.Entity<Client>(b =>
+        {
+            b.Property(x => x.FullName).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Phone).HasMaxLength(40).IsRequired();
+            b.Property(x => x.Email).HasMaxLength(200);
+            b.Property(x => x.PreferencesJson).HasColumnType("jsonb");
+            b.HasIndex(x => new { x.TenantId, x.Phone });
+            b.HasIndex(x => new { x.TenantId, x.FullName });
+        });
+
+        modelBuilder.Entity<Appointment>(b =>
+        {
+            b.Property(x => x.Notes).HasMaxLength(1000);
+            b.Property(x => x.EstimatedValue).HasPrecision(14, 2);
+            // ANTI-OVERBOOKING: un solo cupo por (recurso, fecha, hora) entre citas NO canceladas.
+            // Indice unico parcial: las citas Cancelled/Rescheduled liberan el cupo.
+            b.HasIndex(x => new { x.TenantId, x.ResourceId, x.AppointmentDate, x.StartTime })
+                .IsUnique()
+                .HasFilter("status NOT IN ('Cancelled', 'Rescheduled')");
+            b.HasIndex(x => new { x.TenantId, x.ResourceId, x.AppointmentDate });
+            b.HasIndex(x => new { x.TenantId, x.ClientId, x.AppointmentDate });
+            b.HasIndex(x => x.ChainId);
+        });
+
+        modelBuilder.Entity<AppointmentServiceItem>(b =>
+        {
+            b.Property(x => x.PriceSnapshot).HasPrecision(14, 2);
+            b.HasOne<Appointment>().WithMany().HasForeignKey(x => x.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.AppointmentId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<AppointmentMessage>(b =>
+        {
+            b.Property(x => x.Body).HasColumnType("text").IsRequired();
+            b.HasOne<Appointment>().WithMany().HasForeignKey(x => x.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.AppointmentId, x.SentAt });
         });
     }
 

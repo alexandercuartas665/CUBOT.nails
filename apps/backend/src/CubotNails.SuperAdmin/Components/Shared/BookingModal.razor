@@ -1,0 +1,318 @@
+@using CubotNails.Application.Tenancy
+@using CubotNails.Domain.Enums
+@inject IAgendaService Agenda
+@inject IJSRuntime JS
+
+@if (_visible)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog" style="max-width:900px;">
+            <div class="modal-head">
+                <h3>@(_appointmentId is null ? "Reservar cita" : "Editar cita")</h3>
+                <button class="modal-close" @onclick="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="text-muted" style="font-size:13px;margin-bottom:12px;"><strong>@_slotLabel</strong></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;" class="bk-cols">
+
+                    @* Col 1: cliente *@
+                    <div>
+                        <div class="field" style="position:relative;">
+                            <label class="form-label">Cliente *</label>
+                            <input class="form-control" value="@_clientName" @oninput="OnClientNameInput" autocomplete="off" placeholder="Nombre" />
+                            @if (_suggestions.Count > 0)
+                            {
+                                <div style="position:absolute;z-index:5;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:140px;overflow-y:auto;box-shadow:var(--shadow-card);">
+                                    @foreach (var s in _suggestions)
+                                    {
+                                        <div style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);" @onclick="() => PickClient(s)">
+                                            <strong style="font-size:13px;">@s.Name</strong> <span class="text-muted" style="font-size:12px;">@s.Phone</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Telefono (WhatsApp)</label>
+                            <input class="form-control" @bind="_clientPhone" placeholder="+57 300 000 0000" />
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Estado</label>
+                            <select class="form-control" @bind="_status">
+                                <option value="@AppointmentStatus.Scheduled">Programada</option>
+                                <option value="@AppointmentStatus.Confirmed">Confirmada</option>
+                                <option value="@AppointmentStatus.Completed">Completada</option>
+                                <option value="@AppointmentStatus.NoShow">No-show</option>
+                                <option value="@AppointmentStatus.Cancelled">Cancelada (reprogramar)</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Llegada del cliente</label>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                @foreach (var (p, label) in _punctOptions)
+                                {
+                                    <button type="button" class="@PunctClass(p)" @onclick="() => _punctuality = p">@label</button>
+                                }
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Observacion</label>
+                            <textarea class="form-control" rows="2" @bind="_notes"></textarea>
+                        </div>
+                    </div>
+
+                    @* Col 2: servicios + cadena *@
+                    <div>
+                        <label class="form-label">Servicios de esta visita</label>
+                        <div style="min-height:36px;padding:6px;border:1px dashed var(--border);border-radius:10px;margin-bottom:8px;">
+                            @if (_chosen.Count == 0)
+                            {
+                                <span class="text-muted" style="font-size:12px;font-style:italic;padding-left:4px;">Anade al menos un servicio</span>
+                            }
+                            else
+                            {
+                                @for (var i = 0; i < _chosen.Count; i++)
+                                {
+                                    var idx = i;
+                                    var opt = _options.FirstOrDefault(o => o.Id == _chosen[idx]);
+                                    <span style="display:inline-flex;align-items:center;gap:6px;background:var(--primary-soft);color:var(--accent-foreground);padding:4px 10px;border-radius:99px;font-size:12px;font-weight:600;margin:2px;">
+                                        @(opt?.Name ?? "?") <span class="text-muted">(@(opt?.DurationMinutes)m)</span>
+                                        <button type="button" style="background:none;border:none;cursor:pointer;font-weight:800;line-height:1;color:inherit;" @onclick="() => RemoveService(idx)">&times;</button>
+                                    </span>
+                                }
+                            }
+                        </div>
+                        <div style="display:flex;gap:6px;margin-bottom:10px;">
+                            <select class="form-control form-control-sm" @bind="_svcToAdd">
+                                @foreach (var o in _options)
+                                {
+                                    <option value="@o.Id">@o.Name (@o.DurationMinutes min - $@o.Price.ToString("N0"))</option>
+                                }
+                            </select>
+                            <button type="button" class="btn btn-sm btn-primary" @onclick="AddService">+</button>
+                        </div>
+                        <div style="background:var(--muted);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+                            <div style="display:flex;justify-content:space-between;font-size:13px;"><span class="text-muted">Duracion</span><strong>@TotalDuration min</strong></div>
+                            <div style="display:flex;justify-content:space-between;font-size:13px;"><span class="text-muted">Total estimado</span><strong style="color:var(--primary);">$@TotalValue.ToString("N0")</strong></div>
+                        </div>
+
+                        @if (_appointmentId is null)
+                        {
+                            <div style="background:#fff7ed;border:1px dashed #f59e0b;border-radius:10px;padding:10px 12px;">
+                                <div style="font-weight:700;color:#92400E;font-size:13px;margin-bottom:4px;">Continuar en otra estacion</div>
+                                <p class="text-muted" style="font-size:11px;margin-bottom:8px;">Util cuando el cliente pasa con varios asesores (manicure con Ana + pedicure con Laura).</p>
+                                <div style="display:flex;gap:6px;margin-bottom:6px;">
+                                    <select class="form-control form-control-sm" @bind="_chainResource">
+                                        @foreach (var r in Resources)
+                                        {
+                                            <option value="@r.Id">@r.Name</option>
+                                        }
+                                    </select>
+                                    <input class="form-control form-control-sm" type="time" @bind="_chainTime" style="max-width:110px;" />
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="AddChainStep">+</button>
+                                </div>
+                                @foreach (var (step, i) in _chain.Select((s, i) => (s, i)))
+                                {
+                                    var idx = i;
+                                    <div style="display:flex;align-items:center;gap:6px;font-size:12px;background:var(--card);padding:5px 8px;border-radius:6px;margin-top:4px;">
+                                        <span>&rarr; <strong>@ResourceName(step.ResourceId)</strong> a las @step.StartTime.ToString("HH:mm")</span>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" style="margin-left:auto;padding:0 6px;" @onclick="() => RemoveChainStep(idx)">&times;</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* Col 3: chat *@
+                    <div>
+                        <label class="form-label">Chat con el cliente</label>
+                        <div style="display:flex;flex-direction:column;height:300px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--muted);">
+                            <div style="background:var(--gradient-violet);color:#fff;padding:8px 12px;font-weight:700;font-size:13px;">@(string.IsNullOrWhiteSpace(_clientName) ? "Cliente" : _clientName)</div>
+                            <div style="flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:6px;">
+                                @if (_chat.Count == 0)
+                                {
+                                    <div class="text-muted" style="text-align:center;font-size:12px;margin-top:10px;">Sin mensajes aun.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var m in _chat)
+                                    {
+                                        <div style="@ChatBubble(m.Outbound)">@m.Body</div>
+                                    }
+                                }
+                            </div>
+                            <div style="display:flex;gap:4px;flex-wrap:wrap;padding:6px 8px;background:var(--card);border-top:1px solid var(--border);">
+                                @foreach (var q in _quickReplies)
+                                {
+                                    <button type="button" style="padding:4px 8px;background:var(--primary-soft);color:var(--accent-foreground);border:none;border-radius:99px;font-size:11px;font-weight:600;cursor:pointer;" @onclick="() => QuickMsg(q)">@q</button>
+                                }
+                            </div>
+                            <div style="display:flex;gap:6px;padding:8px;background:var(--card);">
+                                <input class="form-control form-control-sm" @bind="_chatInput" @bind:event="oninput" placeholder="Escribe un mensaje..." @onkeydown="OnChatKey" />
+                                <button type="button" class="btn btn-sm btn-primary" @onclick="SendChat">Enviar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                @if (_error is not null)
+                {
+                    <div class="text-danger small" style="margin-top:10px;">@_error</div>
+                }
+            </div>
+            <div class="modal-foot">
+                @if (_appointmentId is not null)
+                {
+                    <button class="btn btn-outline-danger" style="margin-right:auto;" @onclick="CancelAsync" disabled="@_busy">Cancelar cita</button>
+                }
+                <button class="btn btn-outline-secondary" @onclick="Close">Cerrar</button>
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(_busy || _chosen.Count == 0 || string.IsNullOrWhiteSpace(_clientName))">Guardar cita</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ResourceDto> Resources { get; set; } = Array.Empty<ResourceDto>();
+    [Parameter] public EventCallback OnSaved { get; set; }
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private static readonly (Punctuality, string)[] _punctOptions =
+    {
+        (Punctuality.Early, "Temprano"), (Punctuality.OnTime, "Puntual"), (Punctuality.Late, "Tarde"), (Punctuality.Unknown, "-")
+    };
+    private static readonly string[] _quickReplies =
+    {
+        "Hola, te confirmo tu cita.", "Te esperamos puntual.", "Llega 10 min antes, por favor.", "Hay un cambio en tu cita, podemos hablar?"
+    };
+
+    private bool _visible;
+    private bool _busy;
+    private string? _error;
+    private string _slotLabel = "";
+    private Guid? _appointmentId;
+    private Guid _resourceId;
+    private DateOnly _date;
+    private TimeOnly _startTime;
+    private string _clientName = "";
+    private string _clientPhone = "";
+    private Guid? _clientId;
+    private AppointmentStatus _status = AppointmentStatus.Scheduled;
+    private Punctuality _punctuality = Punctuality.Unknown;
+    private string? _notes;
+    private List<ServiceOptionDto> _options = new();
+    private List<Guid> _chosen = new();
+    private Guid _svcToAdd;
+    private List<BookingChainStep> _chain = new();
+    private Guid _chainResource;
+    private TimeOnly _chainTime = new(10, 0);
+    private List<BookingChatLine> _chat = new();
+    private string _chatInput = "";
+    private List<ClientSuggestionDto> _suggestions = new();
+
+    public async Task OpenForNewAsync(Guid resourceId, DateOnly date, TimeOnly time, string resourceName)
+    {
+        _appointmentId = null; _resourceId = resourceId; _date = date; _startTime = time;
+        _clientName = ""; _clientPhone = ""; _clientId = null;
+        _status = AppointmentStatus.Scheduled; _punctuality = Punctuality.Unknown; _notes = null;
+        _chosen = new(); _chain = new(); _chat = new(); _suggestions = new(); _chatInput = ""; _error = null;
+        _slotLabel = $"{resourceName} - {date:yyyy-MM-dd} {time:HH\\:mm}";
+        _options = (await Agenda.GetServiceOptionsAsync(resourceId)).ToList();
+        _svcToAdd = _options.FirstOrDefault()?.Id ?? Guid.Empty;
+        _chainResource = Resources.FirstOrDefault()?.Id ?? Guid.Empty;
+        _visible = true;
+        StateHasChanged();
+    }
+
+    public async Task OpenForEditAsync(Guid appointmentId)
+    {
+        var d = await Agenda.GetAppointmentAsync(appointmentId);
+        if (d is null) { return; }
+        _appointmentId = appointmentId; _resourceId = d.ResourceId; _date = d.Date; _startTime = d.StartTime;
+        _clientName = d.ClientName ?? ""; _clientPhone = d.ClientPhone ?? ""; _clientId = d.ClientId;
+        _status = d.Status; _punctuality = d.Punctuality; _notes = d.Notes;
+        _chosen = d.ServiceIds.ToList(); _chain = new(); _suggestions = new(); _chatInput = ""; _error = null;
+        _chat = d.Chat.Select(c => new BookingChatLine(c.Outbound, c.Body)).ToList();
+        _slotLabel = $"{d.ResourceName} - {d.Date:yyyy-MM-dd} {d.StartTime:HH\\:mm}";
+        _options = (await Agenda.GetServiceOptionsAsync(d.ResourceId)).ToList();
+        _svcToAdd = _options.FirstOrDefault()?.Id ?? Guid.Empty;
+        _visible = true;
+        StateHasChanged();
+    }
+
+    private void Close() => _visible = false;
+
+    private int TotalDuration => _chosen.Sum(id => _options.FirstOrDefault(o => o.Id == id)?.DurationMinutes ?? 0);
+    private decimal TotalValue => _chosen.Sum(id => _options.FirstOrDefault(o => o.Id == id)?.Price ?? 0m);
+
+    private void AddService() { if (_svcToAdd != Guid.Empty) { _chosen.Add(_svcToAdd); } }
+    private void RemoveService(int i) { if (i >= 0 && i < _chosen.Count) { _chosen.RemoveAt(i); } }
+
+    private async Task OnClientNameInput(ChangeEventArgs e)
+    {
+        _clientName = e.Value?.ToString() ?? "";
+        _clientId = null;
+        _suggestions = (await Agenda.SearchClientsAsync(_clientName)).ToList();
+    }
+
+    private void PickClient(ClientSuggestionDto c)
+    {
+        _clientName = c.Name; _clientPhone = c.Phone; _clientId = c.Id; _suggestions = new();
+    }
+
+    private void AddChainStep()
+    {
+        if (_chainResource != Guid.Empty) { _chain.Add(new BookingChainStep(_chainResource, _chainTime)); }
+    }
+    private void RemoveChainStep(int i) { if (i >= 0 && i < _chain.Count) { _chain.RemoveAt(i); } }
+    private string ResourceName(Guid id) => Resources.FirstOrDefault(r => r.Id == id)?.Name ?? "?";
+
+    private void SendChat()
+    {
+        if (!string.IsNullOrWhiteSpace(_chatInput)) { _chat.Add(new BookingChatLine(true, _chatInput.Trim())); _chatInput = ""; }
+    }
+    private void QuickMsg(string m) => _chat.Add(new BookingChatLine(true, m));
+    private void OnChatKey(KeyboardEventArgs e) { if (e.Key == "Enter") { SendChat(); } }
+
+    private async Task SaveAsync()
+    {
+        _error = null; _busy = true;
+        try
+        {
+            var req = new BookingRequest(_appointmentId, _resourceId, _date, _startTime, _clientName, _clientPhone, _clientId,
+                _chosen.ToList(), _status, _punctuality, _notes,
+                _appointmentId is null ? _chain.ToList() : Array.Empty<BookingChainStep>(), _chat.ToList());
+            var res = await Agenda.SaveBookingAsync(req, await ActorAsync());
+            if (!res.Success) { _error = res.Error ?? "No se pudo guardar."; return; }
+            _visible = false;
+            await OnSaved.InvokeAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CancelAsync()
+    {
+        if (_appointmentId is not Guid id) { return; }
+        if (!await JS.InvokeAsync<bool>("confirm", "Cancelar esta cita? El cupo queda libre y pasa a Reprogramaciones.")) { return; }
+        _busy = true;
+        try
+        {
+            await Agenda.CancelAppointmentAsync(id, await ActorAsync());
+            _visible = false;
+            await OnSaved.InvokeAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task<Guid> ActorAsync()
+    {
+        if (AuthState is null) { return Guid.Empty; }
+        var st = await AuthState;
+        return Guid.TryParse(st.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+    }
+
+    private string PunctClass(Punctuality p) => "btn btn-sm " + (_punctuality == p ? "btn-primary" : "btn-outline-secondary");
+
+    private static string ChatBubble(bool outbound) =>
+        "max-width:80%;padding:6px 10px;border-radius:12px;font-size:12.5px;"
+        + (outbound ? "align-self:flex-end;background:var(--primary);color:#fff;" : "align-self:flex-start;background:var(--card);border:1px solid var(--border);");
+}

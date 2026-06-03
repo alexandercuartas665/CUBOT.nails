@@ -65,6 +65,8 @@ public static class DependencyInjection
         services.AddScoped<Tenancy.IResourceService, Tenancy.ResourceService>();
         services.AddScoped<Tenancy.IShiftTemplateService, Tenancy.ShiftTemplateService>();
         services.AddScoped<Tenancy.IScheduleExceptionService, Tenancy.ScheduleExceptionService>();
+        // Motor de agenda y citas (Capa 2 - nucleo operativo).
+        services.AddScoped<Tenancy.IAgendaService, Tenancy.AgendaService>();
         return services;
     }
 }
