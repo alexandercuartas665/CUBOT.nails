@@ -94,6 +94,28 @@ public sealed class ChatService : IChatService
         return new ConversationDto(conv.Id, conv.ContactPhone, conv.ContactName, conv.LeadId, conv.LastMessageAt, conv.WhatsAppLineId);
     }
 
+    public async Task<ConversationDto?> GetOrCreateForPhoneAsync(string phone, string? contactName, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) { return null; }
+        if (_tenantContext.TenantId is not Guid tenantId) { return null; }
+        var digits = Digits(phone);
+        if (digits.Length == 0) { return null; }
+
+        var conv = await _db.Conversations.FirstOrDefaultAsync(c => c.ContactPhone == digits, cancellationToken);
+        if (conv is null)
+        {
+            conv = new Conversation { TenantId = tenantId, ContactPhone = digits, ContactName = contactName };
+            _db.Conversations.Add(conv);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        else if (string.IsNullOrWhiteSpace(conv.ContactName) && !string.IsNullOrWhiteSpace(contactName))
+        {
+            conv.ContactName = contactName;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        return new ConversationDto(conv.Id, conv.ContactPhone, conv.ContactName, conv.LeadId, conv.LastMessageAt, conv.WhatsAppLineId);
+    }
+
     public async Task<ChatSendResult> SendViaLineAsync(Guid conversationId, Guid lineId, string body, Guid actorUserId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(body))

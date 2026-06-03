@@ -123,35 +123,10 @@
                         }
                     </div>
 
-                    @* Col 3: chat *@
+                    @* Col 3: chat REAL de WhatsApp (componente reutilizable, Evolution + pregrabados + SignalR) *@
                     <div>
                         <label class="form-label">Chat con el cliente</label>
-                        <div style="display:flex;flex-direction:column;height:300px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--muted);">
-                            <div style="background:var(--gradient-violet);color:#fff;padding:8px 12px;font-weight:700;font-size:13px;">@(string.IsNullOrWhiteSpace(_clientName) ? "Cliente" : _clientName)</div>
-                            <div style="flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:6px;">
-                                @if (_chat.Count == 0)
-                                {
-                                    <div class="text-muted" style="text-align:center;font-size:12px;margin-top:10px;">Sin mensajes aun.</div>
-                                }
-                                else
-                                {
-                                    @foreach (var m in _chat)
-                                    {
-                                        <div style="@ChatBubble(m.Outbound)">@m.Body</div>
-                                    }
-                                }
-                            </div>
-                            <div style="display:flex;gap:4px;flex-wrap:wrap;padding:6px 8px;background:var(--card);border-top:1px solid var(--border);">
-                                @foreach (var q in _quickReplies)
-                                {
-                                    <button type="button" style="padding:4px 8px;background:var(--primary-soft);color:var(--accent-foreground);border:none;border-radius:99px;font-size:11px;font-weight:600;cursor:pointer;" @onclick="() => QuickMsg(q)">@q</button>
-                                }
-                            </div>
-                            <div style="display:flex;gap:6px;padding:8px;background:var(--card);">
-                                <input class="form-control form-control-sm" @bind="_chatInput" @bind:event="oninput" placeholder="Escribe un mensaje..." @onkeydown="OnChatKey" />
-                                <button type="button" class="btn btn-sm btn-primary" @onclick="SendChat">Enviar</button>
-                            </div>
-                        </div>
+                        <ClientChat Phone="@_clientPhone" ContactName="@_clientName" />
                     </div>
                 </div>
                 @if (_error is not null)
@@ -180,11 +155,6 @@
     {
         (Punctuality.Early, "Temprano"), (Punctuality.OnTime, "Puntual"), (Punctuality.Late, "Tarde"), (Punctuality.Unknown, "-")
     };
-    private static readonly string[] _quickReplies =
-    {
-        "Hola, te confirmo tu cita.", "Te esperamos puntual.", "Llega 10 min antes, por favor.", "Hay un cambio en tu cita, podemos hablar?"
-    };
-
     private bool _visible;
     private bool _busy;
     private string? _error;
@@ -205,8 +175,6 @@
     private List<BookingChainStep> _chain = new();
     private Guid _chainResource;
     private TimeOnly _chainTime = new(10, 0);
-    private List<BookingChatLine> _chat = new();
-    private string _chatInput = "";
     private List<ClientSuggestionDto> _suggestions = new();
 
     public async Task OpenForNewAsync(Guid resourceId, DateOnly date, TimeOnly time, string resourceName)
@@ -214,7 +182,7 @@
         _appointmentId = null; _resourceId = resourceId; _date = date; _startTime = time;
         _clientName = ""; _clientPhone = ""; _clientId = null;
         _status = AppointmentStatus.Scheduled; _punctuality = Punctuality.Unknown; _notes = null;
-        _chosen = new(); _chain = new(); _chat = new(); _suggestions = new(); _chatInput = ""; _error = null;
+        _chosen = new(); _chain = new(); _suggestions = new(); _error = null;
         _slotLabel = $"{resourceName} - {date:yyyy-MM-dd} {time:HH\\:mm}";
         _options = (await Agenda.GetServiceOptionsAsync(resourceId)).ToList();
         _svcToAdd = _options.FirstOrDefault()?.Id ?? Guid.Empty;
@@ -230,8 +198,7 @@
         _appointmentId = appointmentId; _resourceId = d.ResourceId; _date = d.Date; _startTime = d.StartTime;
         _clientName = d.ClientName ?? ""; _clientPhone = d.ClientPhone ?? ""; _clientId = d.ClientId;
         _status = d.Status; _punctuality = d.Punctuality; _notes = d.Notes;
-        _chosen = d.ServiceIds.ToList(); _chain = new(); _suggestions = new(); _chatInput = ""; _error = null;
-        _chat = d.Chat.Select(c => new BookingChatLine(c.Outbound, c.Body)).ToList();
+        _chosen = d.ServiceIds.ToList(); _chain = new(); _suggestions = new(); _error = null;
         _slotLabel = $"{d.ResourceName} - {d.Date:yyyy-MM-dd} {d.StartTime:HH\\:mm}";
         _options = (await Agenda.GetServiceOptionsAsync(d.ResourceId)).ToList();
         _svcToAdd = _options.FirstOrDefault()?.Id ?? Guid.Empty;
@@ -266,13 +233,6 @@
     private void RemoveChainStep(int i) { if (i >= 0 && i < _chain.Count) { _chain.RemoveAt(i); } }
     private string ResourceName(Guid id) => Resources.FirstOrDefault(r => r.Id == id)?.Name ?? "?";
 
-    private void SendChat()
-    {
-        if (!string.IsNullOrWhiteSpace(_chatInput)) { _chat.Add(new BookingChatLine(true, _chatInput.Trim())); _chatInput = ""; }
-    }
-    private void QuickMsg(string m) => _chat.Add(new BookingChatLine(true, m));
-    private void OnChatKey(KeyboardEventArgs e) { if (e.Key == "Enter") { SendChat(); } }
-
     private async Task SaveAsync()
     {
         _error = null; _busy = true;
@@ -280,7 +240,7 @@
         {
             var req = new BookingRequest(_appointmentId, _resourceId, _date, _startTime, _clientName, _clientPhone, _clientId,
                 _chosen.ToList(), _status, _punctuality, _notes,
-                _appointmentId is null ? _chain.ToList() : Array.Empty<BookingChainStep>(), _chat.ToList());
+                _appointmentId is null ? _chain.ToList() : Array.Empty<BookingChainStep>(), Array.Empty<BookingChatLine>());
             var res = await Agenda.SaveBookingAsync(req, await ActorAsync());
             if (!res.Success) { _error = res.Error ?? "No se pudo guardar."; return; }
             _visible = false;
@@ -311,8 +271,4 @@
     }
 
     private string PunctClass(Punctuality p) => "btn btn-sm " + (_punctuality == p ? "btn-primary" : "btn-outline-secondary");
-
-    private static string ChatBubble(bool outbound) =>
-        "max-width:80%;padding:6px 10px;border-radius:12px;font-size:12.5px;"
-        + (outbound ? "align-self:flex-end;background:var(--primary);color:#fff;" : "align-self:flex-start;background:var(--card);border:1px solid var(--border);");
 }
