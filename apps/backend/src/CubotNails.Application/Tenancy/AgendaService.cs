@@ -60,6 +60,7 @@ public interface IAgendaService
     Task<bool> CancelAppointmentAsync(Guid id, Guid actorUserId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<RescheduleItemDto>> GetRescheduleQueueAsync(CancellationToken cancellationToken = default);
     Task<int> CountRescheduleQueueAsync(CancellationToken cancellationToken = default);
+    Task<int> CountReschedulePendingAsync(Guid tenantId, CancellationToken cancellationToken = default);
     Task<bool> DismissRescheduleAsync(Guid appointmentId, Guid actorUserId, CancellationToken cancellationToken = default);
     Task<bool> MarkPunctualityAsync(Guid appointmentId, Punctuality punctuality, Guid actorUserId, CancellationToken cancellationToken = default);
 }
@@ -371,6 +372,12 @@ public sealed class AgendaService : IAgendaService
 
     public async Task<int> CountRescheduleQueueAsync(CancellationToken cancellationToken = default)
         => await _db.Appointments.AsNoTracking().CountAsync(a => a.Status == AppointmentStatus.Cancelled, cancellationToken);
+
+    // Variante para usar desde un scope/DbContext aislado (ej. badge del NavMenu): no depende del
+    // ITenantContext del circuito; filtra por el tenantId explicito ignorando el query filter global.
+    public async Task<int> CountReschedulePendingAsync(Guid tenantId, CancellationToken cancellationToken = default)
+        => await _db.Appointments.IgnoreQueryFilters().AsNoTracking()
+            .CountAsync(a => a.TenantId == tenantId && a.Status == AppointmentStatus.Cancelled, cancellationToken);
 
     public async Task<IReadOnlyList<RescheduleItemDto>> GetRescheduleQueueAsync(CancellationToken cancellationToken = default)
     {

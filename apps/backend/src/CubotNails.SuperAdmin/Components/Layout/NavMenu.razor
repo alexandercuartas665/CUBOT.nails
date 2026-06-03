@@ -1,7 +1,8 @@
 @implements IDisposable
 @inject NavigationManager Navigation
 @inject ITenantAdminService TenantsSvc
-@inject CubotNails.Application.Tenancy.IAgendaService Agenda
+@inject IServiceScopeFactory ScopeFactory
+@using Microsoft.Extensions.DependencyInjection
 
 <div class="cubot-brand">
     <div class="cubot-logo">
@@ -246,10 +247,18 @@
             }
         }
 
-        if (_showTenant)
+        // Conteo de citas pendientes de reprogramar para el badge (solo usuarios de salon).
+        // IMPORTANTE: se usa un scope/DbContext AISLADO para no compartir el DbContext del circuito
+        // con el query de la pagina (evita "A second operation was started on this context instance").
+        if (isTenantUser && Guid.TryParse(tenantClaim, out var reprogTenantId))
         {
-            // Conteo de citas pendientes de reprogramar para el badge del menu (best-effort).
-            try { _reprogCount = await Agenda.CountRescheduleQueueAsync(); } catch { }
+            try
+            {
+                await using var scope = ScopeFactory.CreateAsyncScope();
+                var agenda = scope.ServiceProvider.GetRequiredService<CubotNails.Application.Tenancy.IAgendaService>();
+                _reprogCount = await agenda.CountReschedulePendingAsync(reprogTenantId);
+            }
+            catch { /* el badge es complemento; si falla no rompe el menu */ }
         }
     }
 
