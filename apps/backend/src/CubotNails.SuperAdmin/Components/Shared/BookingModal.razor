@@ -6,14 +6,15 @@
 @if (_visible)
 {
     <div class="modal-overlay">
-        <div class="modal-dialog" style="max-width:900px;">
+        <div class="modal-dialog pl-lead-dialog">
+          <div class="pl-lead-left">
             <div class="modal-head">
                 <h3>@(_appointmentId is null ? "Reservar cita" : "Editar cita")</h3>
                 <button class="modal-close" @onclick="Close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="text-muted" style="font-size:13px;margin-bottom:12px;"><strong>@_slotLabel</strong></div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;" class="bk-cols">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" class="bk-cols">
 
                     @* Col 1: cliente *@
                     <div>
@@ -123,11 +124,6 @@
                         }
                     </div>
 
-                    @* Col 3: chat REAL de WhatsApp (componente reutilizable, Evolution + pregrabados + SignalR) *@
-                    <div>
-                        <label class="form-label">Chat con el cliente</label>
-                        <ClientChat Phone="@_clientPhone" ContactName="@_clientName" />
-                    </div>
                 </div>
                 @if (_error is not null)
                 {
@@ -142,6 +138,8 @@
                 <button class="btn btn-outline-secondary" @onclick="Close">Cerrar</button>
                 <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(_busy || _chosen.Count == 0 || string.IsNullOrWhiteSpace(_clientName))">Guardar cita</button>
             </div>
+          </div>
+          <ClientChat Phone="@_clientPhone" ContactName="@_clientName" />
         </div>
     </div>
 }
