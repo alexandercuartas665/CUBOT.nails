@@ -25,8 +25,10 @@ public static class EvolutionWebhookParser
         }
 
         if (!root.TryGetProperty("instance", out var instEl) || instEl.ValueKind != JsonValueKind.String) { return null; }
-        var tenantId = TenantFromInstance(instEl.GetString()!);
+        var instance = instEl.GetString()!;
+        var tenantId = TenantFromInstance(instance);
         if (tenantId is null) { return null; }
+        var lineId = LineFromInstance(instance);
 
         if (!root.TryGetProperty("data", out var data)) { return null; }
         if (data.ValueKind == JsonValueKind.Array)
@@ -61,7 +63,7 @@ public static class EvolutionWebhookParser
         }
 
         return new ParsedInbound(tenantId.Value,
-            new IngestMessageRequest(phone, name2, externalId, body!, "text", sentAt));
+            new IngestMessageRequest(phone, name2, externalId, body!, "text", sentAt, lineId));
     }
 
     private static string? ExtractText(JsonElement data)
@@ -86,5 +88,17 @@ public static class EvolutionWebhookParser
         var sep = rest.IndexOf('_');
         var tenantPart = sep > 0 ? rest[..sep] : rest;
         return Guid.TryParseExact(tenantPart, "N", out var id) ? id : null;
+    }
+
+    // Instancia cubot_{tenant:N}_{linea:N} -> linea Guid (WhatsAppLine.Id). Null si no viene.
+    private static Guid? LineFromInstance(string instance)
+    {
+        const string prefix = "cubot_";
+        if (!instance.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { return null; }
+        var rest = instance[prefix.Length..];
+        var sep = rest.IndexOf('_');
+        if (sep <= 0 || sep + 1 >= rest.Length) { return null; }
+        var linePart = rest[(sep + 1)..];
+        return Guid.TryParseExact(linePart, "N", out var id) ? id : null;
     }
 }

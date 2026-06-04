@@ -32,6 +32,8 @@ public interface IApplicationDbContext
     DbSet<AiAgentPrompt> AiAgentPrompts { get; }
     DbSet<AiAgentCacheField> AiAgentCacheFields { get; }
     DbSet<AiAgentCacheValue> AiAgentCacheValues { get; }
+    DbSet<AiAgentLineBinding> AiAgentLineBindings { get; }
+    DbSet<AiAgentRunLog> AiAgentRunLogs { get; }
     DbSet<AiUsageLog> AiUsageLogs { get; }
     DbSet<AutomationRule> AutomationRules { get; }
     DbSet<TaskBoard> TaskBoards { get; }

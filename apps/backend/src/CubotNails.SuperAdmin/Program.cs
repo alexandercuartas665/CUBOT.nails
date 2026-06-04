@@ -49,11 +49,19 @@ builder.Services.AddAuthorizationBuilder()
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
-builder.Services.AddScoped<ITenantContext, CookieUserContext>();
+// Contexto de tenant con soporte ambient: por cookie en peticiones, fijable en background (webhook -> agente).
+builder.Services.AddScoped<ITenantContext, CubotNails.SuperAdmin.Auth.AmbientTenantContext>();
 
 // Chat en tiempo real (SignalR): reemplaza el broadcaster no-op por el real.
 builder.Services.AddSignalR();
 builder.Services.AddScoped<CubotNails.Application.Tenancy.IChatBroadcaster, CubotNails.SuperAdmin.RealTime.SignalRChatBroadcaster>();
+
+// Atencion automatica del agente de IA por lineas de WhatsApp: lector de recursos (wwwroot) +
+// despachador en background con debounce (reemplaza la cola no-op de Application).
+builder.Services.AddSingleton<CubotNails.Application.Tenancy.IAgentAssetReader, CubotNails.SuperAdmin.RealTime.WebRootAgentAssetReader>();
+builder.Services.AddSingleton<CubotNails.SuperAdmin.RealTime.AgentReplyDispatcher>();
+builder.Services.AddSingleton<CubotNails.Application.Tenancy.IAgentReplyQueue>(sp => sp.GetRequiredService<CubotNails.SuperAdmin.RealTime.AgentReplyDispatcher>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CubotNails.SuperAdmin.RealTime.AgentReplyDispatcher>());
 // Tunel de desarrollo real (cloudflared); reemplaza el no-op de Application.
 builder.Services.AddSingleton<CubotNails.Application.Tenancy.IDevTunnel, CubotNails.SuperAdmin.RealTime.CloudflaredTunnel>();
 // Sembrador one-shot del agente TravelFans (ver /admin/seed-travelfans).

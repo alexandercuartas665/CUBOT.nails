@@ -68,6 +68,13 @@ public static class DependencyInjection
         // Motor de agenda y citas (Capa 2 - nucleo operativo).
         services.AddScoped<Tenancy.IAgendaService, Tenancy.AgendaService>();
         services.AddScoped<Tenancy.IClientService, Tenancy.ClientService>();
+        // Herramientas (function calling) que el agente de IA usa para operar la agenda.
+        services.AddScoped<Tenancy.IAgendaToolset, Tenancy.AgendaToolset>();
+        // Atencion del agente por lineas de WhatsApp (binding, orquestacion, bitacora).
+        services.AddScoped<Tenancy.IAiAgentLineService, Tenancy.AiAgentLineService>();
+        services.AddScoped<Tenancy.IAgentConversationService, Tenancy.AgentConversationService>();
+        // Cola de auto-respuesta No-Op por defecto; el host con webhook (SuperAdmin) la reemplaza.
+        services.AddSingleton<Tenancy.IAgentReplyQueue, Tenancy.NoOpAgentReplyQueue>();
         return services;
     }
 }

@@ -63,6 +63,8 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
     public DbSet<AiAgentPrompt> AiAgentPrompts => Set<AiAgentPrompt>();
     public DbSet<AiAgentCacheField> AiAgentCacheFields => Set<AiAgentCacheField>();
     public DbSet<AiAgentCacheValue> AiAgentCacheValues => Set<AiAgentCacheValue>();
+    public DbSet<AiAgentLineBinding> AiAgentLineBindings => Set<AiAgentLineBinding>();
+    public DbSet<AiAgentRunLog> AiAgentRunLogs => Set<AiAgentRunLog>();
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
 
@@ -125,6 +127,7 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
         configurationBuilder.Properties<AppointmentStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<Punctuality>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<BookingChannel>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<AiAgentRunLogKind>().HaveConversion<string>().HaveMaxLength(40);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -390,7 +393,9 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
         {
             b.Property(x => x.ContactPhone).HasMaxLength(40).IsRequired();
             b.Property(x => x.ContactName).HasMaxLength(200);
-            b.HasIndex(x => new { x.TenantId, x.ContactPhone }).IsUnique();
+            // Una conversacion por (tenant, linea, contacto): permite que el mismo numero escriba a
+            // dos lineas distintas del salon como hilos separados (clave de sesion del agente de IA).
+            b.HasIndex(x => new { x.TenantId, x.WhatsAppLineId, x.ContactPhone }).IsUnique();
         });
 
         modelBuilder.Entity<Message>(b =>
@@ -481,6 +486,23 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
             b.HasIndex(x => new { x.TenantId, x.AgentId, x.SessionId });
             // Un valor por (sesion, campo): si llega otro dato, se actualiza el registro.
             b.HasIndex(x => new { x.AgentId, x.SessionId, x.FieldKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<AiAgentLineBinding>(b =>
+        {
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.WhatsAppLine).WithMany().HasForeignKey(x => x.WhatsAppLineId).OnDelete(DeleteBehavior.Cascade);
+            // Una linea es atendida por a lo sumo un agente.
+            b.HasIndex(x => new { x.TenantId, x.WhatsAppLineId }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.AgentId });
+        });
+
+        modelBuilder.Entity<AiAgentRunLog>(b =>
+        {
+            b.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            b.Property(x => x.Content).HasColumnType("text");
+            b.Property(x => x.Response).HasColumnType("text");
+            b.HasIndex(x => new { x.TenantId, x.ConversationId, x.OccurredAt });
         });
 
         modelBuilder.Entity<AiUsageLog>(b =>

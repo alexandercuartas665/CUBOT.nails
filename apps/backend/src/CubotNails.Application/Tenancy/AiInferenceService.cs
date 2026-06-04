@@ -16,17 +16,37 @@ public sealed class AiInferenceService : IAiInferenceService
     private readonly IAiProviderClient _client;
     private readonly IAiUsageService _usage;
     private readonly IAiAgentCacheService _cache;
+    private readonly IAgendaToolset _toolset;
+    private readonly TimeProvider _clock;
 
-    public AiInferenceService(IApplicationDbContext db, ISecretProtector secretProtector, IAiProviderClient client, IAiUsageService usage, IAiAgentCacheService cache)
+    // Tope de vueltas del bucle de herramientas: evita ciclos infinitos si el modelo insiste en llamar tools.
+    private const int MaxToolRounds = 6;
+
+    // Zona horaria del salon demo (America/Bogota = UTC-5, sin horario de verano). Mientras el Tenant no
+    // guarde su propia zona, anclamos aqui para que el agente calcule fechas relativas con el anio correcto.
+    private static readonly TimeSpan SalonOffset = TimeSpan.FromHours(-5);
+
+    public AiInferenceService(IApplicationDbContext db, ISecretProtector secretProtector, IAiProviderClient client, IAiUsageService usage, IAiAgentCacheService cache, IAgendaToolset toolset, TimeProvider clock)
     {
         _db = db;
         _secretProtector = secretProtector;
         _client = client;
         _usage = usage;
         _cache = cache;
+        _toolset = toolset;
+        _clock = clock;
     }
 
-    public async Task<AiChatResult> TestChatAsync(Guid agentId, IReadOnlyList<AiChatTurn> turns, string? systemPromptOverride = null, CancellationToken cancellationToken = default)
+    // Chat de prueba: la sesion de cache es el AgentId y el operador prueba con reservas reales (autonomo).
+    public Task<AiChatResult> TestChatAsync(Guid agentId, IReadOnlyList<AiChatTurn> turns, string? systemPromptOverride = null, Guid? actorUserId = null, CancellationToken cancellationToken = default)
+        => RunCoreAsync(agentId, agentId, turns, systemPromptOverride, autonomous: true, actorUserId ?? Guid.Empty, cancellationToken);
+
+    // Atencion real por una linea: la sesion de cache es la conversacion (linea+contacto) y la autonomia
+    // (reservar/cancelar de verdad vs solo sugerir) la fija el binding de la linea.
+    public Task<AiChatResult> RespondAsync(Guid agentId, Guid sessionId, IReadOnlyList<AiChatTurn> turns, bool autonomous, Guid actorUserId, CancellationToken cancellationToken = default)
+        => RunCoreAsync(agentId, sessionId, turns, null, autonomous, actorUserId, cancellationToken);
+
+    private async Task<AiChatResult> RunCoreAsync(Guid agentId, Guid sessionId, IReadOnlyList<AiChatTurn> turns, string? systemPromptOverride, bool autonomous, Guid actorUserId, CancellationToken cancellationToken)
     {
         var agent = await _db.AiAgents.AsNoTracking().FirstOrDefaultAsync(a => a.Id == agentId, cancellationToken);
         if (agent is null) { return new AiChatResult(false, null, "El agente no existe."); }
@@ -64,10 +84,6 @@ public sealed class AiInferenceService : IAiInferenceService
             .Select(r => new AiChatAttachment(r.Name, r.ResourceType, r.FileUrl, r.FileName, r.Detail))
             .ToListAsync(cancellationToken);
 
-        // En chat de prueba la sesion del cache es el AgentId. En chat real sera el ConversationId
-        // (el llamador lo pasara como sesion separada cuando ese flujo este cableado).
-        var sessionId = agentId;
-
         // Cargamos los campos cache y los valores capturados de la sesion para inyectarlos al prompt.
         var cacheFields = await _db.AiAgentCacheFields.AsNoTracking()
             .Where(f => f.AgentId == agentId)
@@ -79,7 +95,7 @@ public sealed class AiInferenceService : IAiInferenceService
             .Where(v => v.AgentId == agentId && v.SessionId == sessionId)
             .ToDictionaryAsync(v => v.FieldKey, v => v.Value, cancellationToken);
 
-        var systemPrompt = await BuildSystemPrompt(agentId, systemPromptOverride ?? agent.SystemPrompt, resources, cacheFields, cacheValues, turns, cancellationToken);
+        var systemPrompt = await BuildSystemPrompt(agentId, systemPromptOverride ?? agent.SystemPrompt, resources, cacheFields, cacheValues, turns, autonomous, cancellationToken);
 
         // Log de prompts: registramos cada llamada al LLM con su titulo y fecha/hora.
         var debugPrompts = new List<AiDebugPrompt>
@@ -87,7 +103,11 @@ public sealed class AiInferenceService : IAiInferenceService
             new("Prompt principal del agente (enrutador + recursos + estado de cache)", DateTimeOffset.UtcNow, systemPrompt)
         };
 
-        var result = await _client.CompleteAsync(agent.Provider, apiKey, providerCfg.BaseUrl, model, systemPrompt, turns, cancellationToken);
+        // Bucle de herramientas (function calling): el agente puede consultar agenda/asesores/precios y
+        // reservar citas in-process. Si el modelo no llama ninguna herramienta, equivale a una respuesta normal.
+        var actor = actorUserId;
+        var (result, bookingCreated) = await RunToolLoopAsync(
+            agent.Provider, apiKey, providerCfg.BaseUrl, model, systemPrompt, turns, autonomous, actor, debugPrompts, cancellationToken);
 
         // Todo consumo de IA del tenant pasa por el modulo de tokens (incluido el chat de prueba).
         if (result.Ok)
@@ -112,6 +132,14 @@ public sealed class AiInferenceService : IAiInferenceService
             }
         }
 
+        // Cierre del proceso: si en esta vuelta se concreto una reserva, vaciamos la cache de la sesion para
+        // dejar al agente listo para atender a un nuevo cliente desde cero (objetivo cumplido: separar la cita).
+        if (bookingCreated)
+        {
+            try { await _cache.ClearValuesAsync(agentId, sessionId, actor, cancellationToken); }
+            catch { /* limpiar la cache no debe romper la respuesta */ }
+        }
+
         // Entrega de recursos: el modelo marca [[enviar: Nombre]] y aqui adjuntamos el recurso (archivo o texto).
         if (result.Ok && !string.IsNullOrEmpty(result.Text))
         {
@@ -120,6 +148,101 @@ public sealed class AiInferenceService : IAiInferenceService
         }
 
         return result with { DebugPrompts = debugPrompts };
+    }
+
+    // Linea de contexto temporal que se inyecta al inicio del prompt: el modelo la usa para resolver
+    // "hoy", "manana", "el viernes" y para el parametro fecha (AAAA-MM-DD) de las herramientas.
+    private string BuildDateContextLine()
+    {
+        var now = _clock.GetUtcNow().ToOffset(SalonOffset);
+        var dia = SpanishDay(now.DayOfWeek);
+        return $"FECHA Y HORA ACTUAL DEL SALON: hoy es {dia} {now:yyyy-MM-dd}, {now:HH:mm} (zona America/Bogota). " +
+               "Usa SIEMPRE esta fecha como referencia para calcular dias relativos (hoy, manana, el viernes, etc.) y para el " +
+               "parametro fecha (AAAA-MM-DD) de las herramientas. NUNCA uses un anio distinto al actual.";
+    }
+
+    private static string SpanishDay(DayOfWeek d) => d switch
+    {
+        DayOfWeek.Monday => "lunes",
+        DayOfWeek.Tuesday => "martes",
+        DayOfWeek.Wednesday => "miercoles",
+        DayOfWeek.Thursday => "jueves",
+        DayOfWeek.Friday => "viernes",
+        DayOfWeek.Saturday => "sabado",
+        _ => "domingo"
+    };
+
+    /// <summary>
+    /// Ejecuta la conversacion con function calling: pasa los turnos + las herramientas de agenda al
+    /// proveedor; mientras el modelo pida herramientas, las ejecuta IN-PROCESS (misma ruta de reserva que
+    /// la recepcion, con anti-overbooking) y vuelve a llamar con los resultados, hasta que el modelo da su
+    /// respuesta final en texto. Devuelve el texto final y si se concreto una reserva en el camino.
+    /// </summary>
+    private async Task<(AiChatResult Result, bool BookingCreated)> RunToolLoopAsync(
+        AiProvider provider, string apiKey, string? baseUrl, string model, string systemPrompt,
+        IReadOnlyList<AiChatTurn> turns, bool autonomous, Guid actorUserId, List<AiDebugPrompt> debugPrompts, CancellationToken ct)
+    {
+        var specs = _toolset.GetSpecs();
+
+        // Historial inicial: los turnos del chat como mensajes de herramienta.
+        var messages = new List<AiToolMessage>();
+        foreach (var t in turns)
+        {
+            var role = string.Equals(t.Role, "model", StringComparison.OrdinalIgnoreCase) ? "assistant" : "user";
+            messages.Add(new AiToolMessage(role, t.Text));
+        }
+
+        var totalIn = 0;
+        var totalOut = 0;
+        var bookingCreated = false;
+        string? lastText = null;
+
+        for (var round = 1; round <= MaxToolRounds; round++)
+        {
+            var completion = await _client.CompleteWithToolsAsync(provider, apiKey, baseUrl, model, systemPrompt, messages, specs, ct);
+            totalIn += completion.InputTokens;
+            totalOut += completion.OutputTokens;
+
+            if (!completion.Ok)
+            {
+                return (new AiChatResult(false, null, completion.Error, totalIn, totalOut), bookingCreated);
+            }
+
+            // Sin herramientas pedidas: el modelo entrega su respuesta final.
+            if (completion.ToolCalls.Count == 0)
+            {
+                return (new AiChatResult(true, completion.Text ?? lastText, null, totalIn, totalOut), bookingCreated);
+            }
+
+            // El modelo pidio una o mas herramientas: las registramos en el log y agregamos el turno assistant.
+            lastText = completion.Text;
+            var callsLog = new StringBuilder();
+            foreach (var c in completion.ToolCalls) { callsLog.AppendLine($"-> {c.Name}({c.ArgumentsJson})"); }
+            debugPrompts.Add(new AiDebugPrompt(
+                $"IA solicito herramientas (ronda {round})",
+                DateTimeOffset.UtcNow,
+                (string.IsNullOrWhiteSpace(completion.Text) ? "" : completion.Text + "\n\n") + callsLog.ToString().TrimEnd()));
+
+            messages.Add(new AiToolMessage("assistant", completion.Text, completion.ToolCalls));
+
+            // Ejecuta cada herramienta in-process y agrega su resultado como mensaje "tool".
+            foreach (var call in completion.ToolCalls)
+            {
+                var exec = await _toolset.ExecuteAsync(call.Name, call.ArgumentsJson, actorUserId, autonomous, ct);
+                if (exec.BookingCreated) { bookingCreated = true; }
+
+                debugPrompts.Add(new AiDebugPrompt(
+                    $"Herramienta ejecutada: {call.Name}",
+                    DateTimeOffset.UtcNow,
+                    $"Argumentos:\n{call.ArgumentsJson}",
+                    exec.Json));
+
+                messages.Add(new AiToolMessage("tool", exec.Json, null, call.Id, call.Name));
+            }
+        }
+
+        // Se agoto el tope de vueltas sin respuesta final: devolvemos el ultimo texto o un aviso.
+        return (new AiChatResult(true, lastText ?? "Estoy procesando tu solicitud, dame un momento.", null, totalIn, totalOut), bookingCreated);
     }
 
     // Arma el prompt del sistema: prompt base + enrutador + catalogo de recursos + ESTADO DE CACHE
@@ -131,9 +254,20 @@ public sealed class AiInferenceService : IAiInferenceService
         IReadOnlyList<CacheFieldInfo> cacheFields,
         IReadOnlyDictionary<string, string?> cacheValues,
         IReadOnlyList<AiChatTurn> turns,
+        bool autonomous,
         CancellationToken ct)
     {
-        var sb = new StringBuilder(ExpandResourceRefs(basePrompt, resources));
+        var sb = new StringBuilder();
+        // Ancla temporal: el modelo no conoce "hoy"; sin esto reserva con anios equivocados.
+        sb.AppendLine(BuildDateContextLine());
+        // Modo de operacion de la linea: en sugerencia el agente NO finaliza solo, deja la solicitud al asesor.
+        if (!autonomous)
+        {
+            sb.AppendLine();
+            sb.AppendLine("MODO SUGERENCIA: no puedes confirmar ni cancelar citas por ti mismo. Cuando el cliente acepte, usa la herramienta correspondiente para REGISTRAR la solicitud (quedara PENDIENTE de que un asesor del salon la confirme) e informa con calidez que un asesor confirmara en breve. No afirmes que la cita ya quedo confirmada.");
+        }
+        sb.AppendLine();
+        sb.Append(ExpandResourceRefs(basePrompt, resources));
 
         var prompts = await _db.AiAgentPrompts.AsNoTracking()
             .Where(p => p.AgentId == agentId)
@@ -228,7 +362,7 @@ public sealed class AiInferenceService : IAiInferenceService
         var lastUser = originalTurns.LastOrDefault(t => string.Equals(t.Role, "user", StringComparison.OrdinalIgnoreCase))?.Text ?? "";
 
         var sysSb = new StringBuilder();
-        sysSb.AppendLine("Eres un extractor de datos para una agencia de viajes. NO debes responder al cliente.");
+        sysSb.AppendLine("Eres un extractor de datos para un salon de belleza. NO debes responder al cliente.");
         sysSb.AppendLine("Tu unico trabajo es leer la ultima interaccion cliente+agente y devolver un JSON plano con los campos que puedas inferir CON CERTEZA del mensaje del cliente.");
         sysSb.AppendLine("Reglas:");
         sysSb.AppendLine("- NO inventes datos. Si no esta claro, NO incluyas el campo.");

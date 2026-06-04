@@ -12,13 +12,15 @@ public sealed class ChatIngestService : IChatIngestService
     private readonly IApplicationDbContext _db;
     private readonly ISecretProtector _secretProtector;
     private readonly IChatBroadcaster _broadcaster;
+    private readonly IAgentReplyQueue _agentQueue;
     private readonly TimeProvider _timeProvider;
 
-    public ChatIngestService(IApplicationDbContext db, ISecretProtector secretProtector, IChatBroadcaster broadcaster, TimeProvider timeProvider)
+    public ChatIngestService(IApplicationDbContext db, ISecretProtector secretProtector, IChatBroadcaster broadcaster, IAgentReplyQueue agentQueue, TimeProvider timeProvider)
     {
         _db = db;
         _secretProtector = secretProtector;
         _broadcaster = broadcaster;
+        _agentQueue = agentQueue;
         _timeProvider = timeProvider;
     }
 
@@ -52,9 +54,12 @@ public sealed class ChatIngestService : IChatIngestService
         }
 
         var phone = payload.ContactPhone.Trim();
+        var lineId = payload.WhatsAppLineId;
+        // Conversacion por (tenant, linea, contacto): el mismo numero en dos lineas son hilos separados,
+        // lo que separa la sesion de cache del agente y evita confundir clientes.
         var conversation = await _db.Conversations
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.ContactPhone == phone, cancellationToken);
+            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.WhatsAppLineId == lineId && c.ContactPhone == phone, cancellationToken);
 
         var now = _timeProvider.GetUtcNow();
         var sentAt = payload.SentAt ?? now;
@@ -66,6 +71,7 @@ public sealed class ChatIngestService : IChatIngestService
                 TenantId = tenantId,
                 ContactPhone = phone,
                 ContactName = payload.ContactName?.Trim(),
+                WhatsAppLineId = lineId,
                 LastMessageAt = sentAt
             };
             _db.Conversations.Add(conversation);
@@ -73,6 +79,7 @@ public sealed class ChatIngestService : IChatIngestService
         else
         {
             conversation.LastMessageAt = sentAt;
+            if (conversation.WhatsAppLineId is null && lineId is not null) { conversation.WhatsAppLineId = lineId; }
             if (conversation.ContactName is null && payload.ContactName is not null)
             {
                 conversation.ContactName = payload.ContactName.Trim();
@@ -96,6 +103,13 @@ public sealed class ChatIngestService : IChatIngestService
         var dto = new MessageDto(message.Id, message.ConversationId, message.Direction, message.Body,
             message.MessageType, message.SentAt, message.MediaType, message.MediaUrl, message.MediaMimeType, message.SentByName);
         await _broadcaster.MessageAddedAsync(tenantId, conversation.Id, dto, cancellationToken);
+
+        // Si la conversacion llego por una linea, encolamos la atencion del agente (el despachador
+        // decide si hay un agente conectado a esa linea; aqui no bloqueamos el webhook).
+        if (lineId is not null)
+        {
+            _agentQueue.Schedule(tenantId, conversation.Id);
+        }
 
         return ChatIngestResult.Accepted;
     }

@@ -10,6 +10,7 @@
 @inject IAiInferenceService InferenceSvc
 @inject IAiUsageService UsageSvc
 @inject IWhatsAppLineService LinesSvc
+@inject IAiAgentLineService AgentLinesSvc
 @inject IWhatsAppConnectorService Connector
 @inject IWebHostEnvironment Env
 @inject IJSRuntime JS
@@ -285,6 +286,64 @@ else
                                                 </div>
                                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenResource(r)" disabled="@_busy">Editar</button>
                                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteResourceAsync(r.Id)" disabled="@_busy">&times;</button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* ===== Lineas de WhatsApp que atiende el agente - acordeon ===== *@
+                    <hr style="border-color:var(--border);margin:14px 0;" />
+                    <div class="ag-accordion">
+                        <div class="ag-accordion-head" role="button" tabindex="0" @onclick="() => _linesOpen = !_linesOpen">
+                            <span class="ag-accordion-chev @(_linesOpen ? "open" : "")">&#9656;</span>
+                            <span class="pl-stagegroup-title" style="margin:0;">Lineas de WhatsApp</span>
+                            <span class="ag-accordion-count">@_agentLines.Count(l => l.Connected)</span>
+                        </div>
+                        @if (_linesOpen)
+                        {
+                            <div class="ag-accordion-body">
+                                <div class="text-muted" style="font-size:12px;margin-bottom:10px;">Conecta el agente a una linea para que atienda automaticamente los mensajes que lleguen ahi. Cada cliente se atiende por separado (linea + numero). Con "Auto-confirmar" el agente reserva y cancela por si mismo; apagado, solo deja la solicitud para que un asesor la confirme.</div>
+                                @if (_agentLines.Count == 0)
+                                {
+                                    <div class="text-muted small">No hay lineas de WhatsApp. Crea una en "Lineas WhatsApp".</div>
+                                }
+                                else
+                                {
+                                    <div class="ag-list">
+                                        @foreach (var l in _agentLines)
+                                        {
+                                            <div class="ag-item">
+                                                <div class="ag-item-main">
+                                                    <div class="ag-item-name">@(string.IsNullOrWhiteSpace(l.PhoneNumber) ? l.InstanceName : l.PhoneNumber) <span class="badge @LineBadge(l.LineStatus)">@l.LineStatus</span></div>
+                                                    <div class="ag-item-sub">
+                                                        @if (l.OtherAgentName is not null)
+                                                        {
+                                                            <span class="text-warning">La atiende el agente "@l.OtherAgentName". Conectar aqui la reasignara a este agente.</span>
+                                                        }
+                                                        else if (l.Connected)
+                                                        {
+                                                            <span>Atendida por este agente &middot; @(l.AutoConfirm ? "Autonomo (reserva/cancela)" : "Modo sugerencia (deja al asesor)")</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span>Sin atender por este agente.</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                @if (l.Connected)
+                                                {
+                                                    <label class="ag-switch" title="Auto-confirmar (autonomo)" style="margin-right:6px;">
+                                                        <input type="checkbox" checked="@l.AutoConfirm" @onchange="@(e => ToggleAutoConfirmAsync(l.LineId, (bool)e.Value!))" disabled="@_busy" />
+                                                        <span class="ag-slider"></span>
+                                                    </label>
+                                                    <span class="small text-muted" style="margin-right:8px;">Auto</span>
+                                                }
+                                                <button class="btn btn-sm @(l.Connected ? "btn-outline-danger" : "btn-outline-secondary")" @onclick="() => ToggleConnectedAsync(l.LineId, !l.Connected)" disabled="@_busy">
+                                                    @(l.Connected ? "Desconectar" : "Conectar")
+                                                </button>
                                             </div>
                                         }
                                     </div>
@@ -761,6 +820,9 @@ else
     // Acordeones del editor (colapsados por defecto para no llenar la columna).
     private bool _cacheOpen;
     private bool _resourcesOpen;
+    private bool _linesOpen;
+    // Lineas de WhatsApp que el agente puede atender (binding por linea).
+    private List<AgentLineDto> _agentLines = new();
     // Modal aparte para los datos percibidos en la sesion de prueba.
     private bool _perceivedModalOpen;
 
@@ -890,12 +952,49 @@ else
         _resources = detail.Resources.ToList();
         _prompts = detail.Prompts.ToList();
         await ReloadCacheAsync(id);
+        _agentLines = (await AgentLinesSvc.ListLinesForAgentAsync(id)).ToList();
         _cacheOpen = false;
         _resourcesOpen = false;
+        _linesOpen = false;
         _perceivedModalOpen = false;
         ResetTest();
         _editorOpen = true;
     }
+
+    // ===== Lineas de WhatsApp del agente =====
+    private async Task ToggleConnectedAsync(Guid lineId, bool connected)
+    {
+        if (_editId is null) { return; }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await AgentLinesSvc.SetConnectedAsync(_editId.Value, lineId, connected, actor);
+            _agentLines = (await AgentLinesSvc.ListLinesForAgentAsync(_editId.Value)).ToList();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleAutoConfirmAsync(Guid lineId, bool autoConfirm)
+    {
+        if (_editId is null) { return; }
+        _busy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            await AgentLinesSvc.SetAutoConfirmAsync(_editId.Value, lineId, autoConfirm, actor);
+            _agentLines = (await AgentLinesSvc.ListLinesForAgentAsync(_editId.Value)).ToList();
+        }
+        finally { _busy = false; }
+    }
+
+    private static string LineBadge(WhatsAppLineStatus s) => s switch
+    {
+        WhatsAppLineStatus.Connected => "bg-success",
+        WhatsAppLineStatus.Connecting => "bg-info",
+        WhatsAppLineStatus.Failed or WhatsAppLineStatus.Disconnected => "bg-danger",
+        _ => "bg-secondary"
+    };
 
     // ===== Datos cache =====
     // Para esta pantalla de pruebas usamos el AgentId como SessionId (una sesion por agente).
@@ -1145,7 +1244,7 @@ else
             // Pasamos tambien los adjuntos de cada turno; el extractor de cache los usa para construir
             // una transcripcion legible (sino veria texto vacio cuando el agente solo respondio con un recurso).
             var turns = _testMsgs.Select(m => new AiChatTurn(m.Role, m.Text, m.Attachments)).ToList();
-            var result = await InferenceSvc.TestChatAsync(_editId.Value, turns, _fPrompt);
+            var result = await InferenceSvc.TestChatAsync(_editId.Value, turns, _fPrompt, await ActorAsync());
             // Acumulamos las entradas del log de prompts (principal + extractor) en orden cronologico.
             if (result.DebugPrompts is not null) { _debugLog.AddRange(result.DebugPrompts); }
             if (result.Ok && (!string.IsNullOrWhiteSpace(result.Text) || result.Attachments is { Count: > 0 }))

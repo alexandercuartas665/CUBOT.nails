@@ -23,13 +23,16 @@ public sealed record MessageDto(
     string? SentByName = null);
 
 /// <summary>Payload normalizado del webhook entrante (lo produce el Evolution Connector).</summary>
+/// <param name="WhatsAppLineId">Linea que recibio el mensaje (se deduce del nombre de instancia). Necesaria para
+/// separar conversaciones por (linea, contacto) y para que el agente de IA responda por la linea correcta.</param>
 public sealed record IngestMessageRequest(
     string ContactPhone,
     string? ContactName,
     string ExternalMessageId,
     string Body,
     string? MessageType = null,
-    DateTimeOffset? SentAt = null);
+    DateTimeOffset? SentAt = null,
+    Guid? WhatsAppLineId = null);
 
 public sealed record SendMessageRequest(string Body);
 
