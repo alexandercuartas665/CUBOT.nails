@@ -4,8 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CubotNails.Application.Tenancy;
 
-public sealed record ServiceDto(Guid Id, string Name, int DurationMinutes, decimal Price, string? Category, string? Color, bool IsActive);
-public sealed record SaveServiceRequest(string Name, int DurationMinutes, decimal Price, string? Category, string? Color);
+public sealed record ServiceDto(Guid Id, string Name, int DurationMinutes, decimal Price, string? Category, string? Color, bool IsActive, string? Description = null);
+public sealed record SaveServiceRequest(string Name, int DurationMinutes, decimal Price, string? Category, string? Color, string? Description = null);
 
 /// <summary>Catalogo de servicios del salon (Servicios). Tenant-scoped CRUD.</summary>
 public interface IServiceCatalogService
@@ -32,7 +32,7 @@ public sealed class ServiceCatalogService : IServiceCatalogService
         => await _db.Services.AsNoTracking()
             .Where(s => includeInactive || s.IsActive)
             .OrderBy(s => s.Name)
-            .Select(s => new ServiceDto(s.Id, s.Name, s.DurationMinutes, s.Price, s.Category, s.Color, s.IsActive))
+            .Select(s => new ServiceDto(s.Id, s.Name, s.DurationMinutes, s.Price, s.Category, s.Color, s.IsActive, s.Description))
             .ToListAsync(cancellationToken);
 
     public async Task<ServiceDto?> CreateAsync(SaveServiceRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -45,6 +45,7 @@ public sealed class ServiceCatalogService : IServiceCatalogService
         {
             TenantId = tenantId,
             Name = name,
+            Description = Clean(request.Description),
             DurationMinutes = Math.Max(0, request.DurationMinutes),
             Price = Math.Max(0m, request.Price),
             Category = Clean(request.Category),
@@ -65,6 +66,7 @@ public sealed class ServiceCatalogService : IServiceCatalogService
         if (name.Length == 0) { return null; }
 
         entity.Name = name;
+        entity.Description = Clean(request.Description);
         entity.DurationMinutes = Math.Max(0, request.DurationMinutes);
         entity.Price = Math.Max(0m, request.Price);
         entity.Category = Clean(request.Category);
@@ -97,5 +99,5 @@ public sealed class ServiceCatalogService : IServiceCatalogService
     }
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
-    private static ServiceDto Map(Service s) => new(s.Id, s.Name, s.DurationMinutes, s.Price, s.Category, s.Color, s.IsActive);
+    private static ServiceDto Map(Service s) => new(s.Id, s.Name, s.DurationMinutes, s.Price, s.Category, s.Color, s.IsActive, s.Description);
 }

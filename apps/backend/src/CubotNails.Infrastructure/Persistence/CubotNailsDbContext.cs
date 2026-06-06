@@ -626,6 +626,7 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
         modelBuilder.Entity<Service>(b =>
         {
             b.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            b.Property(x => x.Description).HasColumnType("text");
             b.Property(x => x.Currency).HasMaxLength(8);
             b.Property(x => x.Category).HasMaxLength(80);
             b.Property(x => x.Color).HasMaxLength(20);

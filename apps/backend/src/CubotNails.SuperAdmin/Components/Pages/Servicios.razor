@@ -98,6 +98,10 @@ else
                     <label class="form-label">Nombre *</label>
                     <input class="form-control" @bind="_form.Name" placeholder="Manicure semipermanente" />
                 </div>
+                <div class="field">
+                    <label class="form-label">Descripcion</label>
+                    <RichTextArea @bind-Value="_form.Description" Rows="3" Placeholder="En que consiste el servicio..." />
+                </div>
                 <div class="field-row">
                     <div class="field">
                         <label class="form-label">Duracion (min)</label>
@@ -156,7 +160,7 @@ else
         _editingId = s?.Id;
         _form = s is null
             ? new FormModel { Color = "#A03DC9", DurationMinutes = 45 }
-            : new FormModel { Name = s.Name, DurationMinutes = s.DurationMinutes, Price = s.Price, Category = s.Category, Color = string.IsNullOrWhiteSpace(s.Color) ? "#A03DC9" : s.Color };
+            : new FormModel { Name = s.Name, Description = s.Description, DurationMinutes = s.DurationMinutes, Price = s.Price, Category = s.Category, Color = string.IsNullOrWhiteSpace(s.Color) ? "#A03DC9" : s.Color };
         _formOpen = true;
     }
 
@@ -167,7 +171,7 @@ else
         try
         {
             var actor = await ActorAsync();
-            var req = new SaveServiceRequest(_form.Name, _form.DurationMinutes, _form.Price, _form.Category, _form.Color);
+            var req = new SaveServiceRequest(_form.Name, _form.DurationMinutes, _form.Price, _form.Category, _form.Color, _form.Description);
             var result = _editingId is Guid id ? await Svc.UpdateAsync(id, req, actor) : await Svc.CreateAsync(req, actor);
             if (result is null) { _error = "No se pudo guardar."; return; }
             _formOpen = false;
@@ -201,6 +205,7 @@ else
     private sealed class FormModel
     {
         public string Name { get; set; } = "";
+        public string? Description { get; set; }
         public int DurationMinutes { get; set; } = 45;
         public decimal Price { get; set; }
         public string? Category { get; set; }

@@ -164,7 +164,7 @@ public sealed class AgendaToolset : IAgendaToolset
         var all = (await _services.ListAsync(false, ct)).ToList();
         return Ok(new
         {
-            servicios = all.Select(s => new { id = s.Id, nombre = s.Name, precio = s.Price, duracion_min = s.DurationMinutes, categoria = s.Category }).ToArray()
+            servicios = all.Select(s => new { id = s.Id, nombre = s.Name, precio = s.Price, duracion_min = s.DurationMinutes, categoria = s.Category, descripcion = s.Description }).ToArray()
         });
     }
 
