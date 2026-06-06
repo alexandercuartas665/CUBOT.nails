@@ -111,6 +111,9 @@ else
     await seeder.SeedAsync();
     await seeder.EnsurePlatformAdminTenantAsync();
     await seeder.EnsureDemoTemplateAssetsAsync();
+    await seeder.EnsureDemoProductsAsync();
+    await seeder.EnsureDemoCoursesAsync();
+    await seeder.EnsureDemoAgentCommercialFlowAsync();
 }
 
 app.UseHttpsRedirection();

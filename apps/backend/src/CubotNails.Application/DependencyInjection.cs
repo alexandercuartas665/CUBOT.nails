@@ -65,11 +65,28 @@ public static class DependencyInjection
         services.AddScoped<Tenancy.IResourceService, Tenancy.ResourceService>();
         services.AddScoped<Tenancy.IShiftTemplateService, Tenancy.ShiftTemplateService>();
         services.AddScoped<Tenancy.IScheduleExceptionService, Tenancy.ScheduleExceptionService>();
+        services.AddScoped<Tenancy.ISalonFieldService, Tenancy.SalonFieldService>();
+        services.AddScoped<Tenancy.ISedeService, Tenancy.SedeService>();
+        services.AddScoped<Tenancy.IProductService, Tenancy.ProductService>();
+        services.AddScoped<Tenancy.ICourseService, Tenancy.CourseService>();
+        services.AddScoped<Tenancy.IBusinessUnitService, Tenancy.BusinessUnitService>();
         // Motor de agenda y citas (Capa 2 - nucleo operativo).
         services.AddScoped<Tenancy.IAgendaService, Tenancy.AgendaService>();
         services.AddScoped<Tenancy.IClientService, Tenancy.ClientService>();
-        // Herramientas (function calling) que el agente de IA usa para operar la agenda.
-        services.AddScoped<Tenancy.IAgendaToolset, Tenancy.AgendaToolset>();
+        // Herramientas (function calling / "MCP") que el agente de IA puede usar. Cada toolset se registra
+        // tambien como IAgentToolset para que el motor de inferencia los agregue todos y filtre por agente.
+        services.AddScoped<Tenancy.AgendaToolset>();
+        services.AddScoped<Tenancy.IAgendaToolset>(sp => sp.GetRequiredService<Tenancy.AgendaToolset>());
+        services.AddScoped<Tenancy.IAgentToolset>(sp => sp.GetRequiredService<Tenancy.AgendaToolset>());
+        services.AddScoped<Tenancy.ProductToolset>();
+        services.AddScoped<Tenancy.IProductToolset>(sp => sp.GetRequiredService<Tenancy.ProductToolset>());
+        services.AddScoped<Tenancy.IAgentToolset>(sp => sp.GetRequiredService<Tenancy.ProductToolset>());
+        services.AddScoped<Tenancy.PipelineToolset>();
+        services.AddScoped<Tenancy.IPipelineToolset>(sp => sp.GetRequiredService<Tenancy.PipelineToolset>());
+        services.AddScoped<Tenancy.IAgentToolset>(sp => sp.GetRequiredService<Tenancy.PipelineToolset>());
+        services.AddScoped<Tenancy.CourseToolset>();
+        services.AddScoped<Tenancy.ICourseToolset>(sp => sp.GetRequiredService<Tenancy.CourseToolset>());
+        services.AddScoped<Tenancy.IAgentToolset>(sp => sp.GetRequiredService<Tenancy.CourseToolset>());
         // Atencion del agente por lineas de WhatsApp (binding, orquestacion, bitacora).
         services.AddScoped<Tenancy.IAiAgentLineService, Tenancy.AiAgentLineService>();
         services.AddScoped<Tenancy.IAgentConversationService, Tenancy.AgentConversationService>();

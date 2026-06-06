@@ -5,6 +5,7 @@
 @using CubotNails.Application.Admin
 @using CubotNails.Domain.Enums
 @inject IAiAgentService AgentsSvc
+@inject IEnumerable<IAgentToolset> Toolsets
 @inject IAiAgentCacheService CacheSvc
 @inject IAiServerConfigService AiServersSvc
 @inject IAiInferenceService InferenceSvc
@@ -347,6 +348,40 @@ else
                                             </div>
                                         }
                                     </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* ===== Herramientas (MCP) que el agente puede usar - acordeon ===== *@
+                    <hr style="border-color:var(--border);margin:14px 0;" />
+                    <div class="ag-accordion">
+                        <div class="ag-accordion-head" role="button" tabindex="0" @onclick="() => _toolsOpen = !_toolsOpen">
+                            <span class="ag-accordion-chev @(_toolsOpen ? "open" : "")">&#9656;</span>
+                            <span class="pl-stagegroup-title" style="margin:0;">Herramientas (MCP)</span>
+                            <span class="ag-accordion-count">@EnabledToolCount()/@TotalToolCount()</span>
+                        </div>
+                        @if (_toolsOpen)
+                        {
+                            <div class="ag-accordion-body">
+                                <div class="text-muted" style="font-size:12px;margin-bottom:10px;">Activa o desactiva las herramientas que este agente puede invocar al conversar. Los cambios se guardan con "Guardar cambios".</div>
+                                @foreach (var ts in Toolsets)
+                                {
+                                    <div style="font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;margin:10px 0 2px;color:var(--muted-foreground);">@ts.GroupLabel</div>
+                                    @foreach (var spec in ts.GetSpecs())
+                                    {
+                                        var enabled = !_disabledTools.Contains(spec.Name);
+                                        <div style="display:flex;align-items:flex-start;gap:10px;padding:7px 2px;border-bottom:1px solid var(--border);">
+                                            <label class="ag-switch" style="margin-top:2px;flex:none;">
+                                                <input type="checkbox" checked="@enabled" @onchange="@(e => ToggleTool(spec.Name, (bool)e.Value!))" disabled="@_busy" />
+                                                <span class="ag-slider"></span>
+                                            </label>
+                                            <div style="min-width:0;">
+                                                <div style="font-weight:600;font-size:13px;">@Humanize(spec.Name)</div>
+                                                <div class="text-muted" style="font-size:11.5px;">@Trim(spec.Description ?? "", 130)</div>
+                                            </div>
+                                        </div>
+                                    }
                                 }
                             </div>
                         }
@@ -696,7 +731,11 @@ else
                                 <a href="@_rFileUrl" target="_blank">@(_rFileName ?? "ver archivo")</a>
                             </div>
                         }
-                        <InputFile OnChange="OnResourceModalFileAsync" />
+                        <InputFile OnChange="OnResourceModalFileAsync" accept="@AcceptFor(_rType)" />
+                        @if (_rType == AgentResourceType.Image)
+                        {
+                            <div class="text-muted small" style="margin-top:4px;">WhatsApp solo admite JPEG o PNG como imagen (no SVG).</div>
+                        }
                     </div>
                 }
                 @if (_resError is not null)
@@ -785,6 +824,10 @@ else
     private AiProvider _fProvider = AiProvider.Claude;
     private string? _fModel;
     private string _fPrompt = "";
+
+    // Herramientas (MCP) deshabilitadas para el agente en edicion. Vacio = todas habilitadas.
+    private bool _toolsOpen;
+    private readonly HashSet<string> _disabledTools = new(StringComparer.OrdinalIgnoreCase);
     private bool _fActive;
     private List<AiAgentResourceDto> _resources = new();
     private List<AiAgentPromptDto> _prompts = new();
@@ -915,6 +958,8 @@ else
         _fModel = null;
         _fPrompt = "";
         _fActive = false;
+        _disabledTools.Clear();
+        _toolsOpen = false;
         _resources = new();
         _cacheFields = new();
         _cacheValues = new();
@@ -949,6 +994,8 @@ else
         _fModel = detail.Agent.Model;
         _fPrompt = detail.Agent.SystemPrompt;
         _fActive = detail.Agent.IsActive;
+        _disabledTools.Clear();
+        foreach (var t in detail.Agent.DisabledTools ?? Array.Empty<string>()) { _disabledTools.Add(t); }
         _resources = detail.Resources.ToList();
         _prompts = detail.Prompts.ToList();
         await ReloadCacheAsync(id);
@@ -1156,6 +1203,18 @@ else
 
     private async Task OnResourceModalFileAsync(InputFileChangeEventArgs e)
     {
+        _resError = null;
+        // WhatsApp solo muestra imagenes JPEG o PNG. SVG/GIF/WebP fallan al enviarse por Evolution/Baileys,
+        // y el adjunto se cae en silencio en la conversacion. Lo bloqueamos aqui con un mensaje claro.
+        if (_rType == AgentResourceType.Image)
+        {
+            var ext = System.IO.Path.GetExtension(e.File.Name).ToLowerInvariant();
+            if (ext is not (".jpg" or ".jpeg" or ".png"))
+            {
+                _resError = $"WhatsApp no admite imagenes {(string.IsNullOrEmpty(ext) ? "sin extension" : ext)} como foto. Sube un JPEG o PNG.";
+                return;
+            }
+        }
         var saved = await SaveAgentFileAsync(e.File);
         if (saved is null) { _resError = "No se pudo subir el archivo."; return; }
         _rFileUrl = saved.Value.Url;
@@ -1327,6 +1386,17 @@ else
 
     private void CloseEditor() => _editorOpen = false;
 
+    // ===== Herramientas (MCP) =====
+    private void ToggleTool(string name, bool enabled)
+    {
+        if (enabled) { _disabledTools.Remove(name); }
+        else { _disabledTools.Add(name); }
+    }
+    private int TotalToolCount() => Toolsets.Sum(t => t.GetSpecs().Count);
+    private int EnabledToolCount() => Toolsets.Sum(t => t.GetSpecs().Count(s => !_disabledTools.Contains(s.Name)));
+    private static string Humanize(string toolName) =>
+        string.IsNullOrEmpty(toolName) ? toolName : char.ToUpperInvariant(toolName[0]) + toolName[1..].Replace('_', ' ');
+
     private async Task SaveAgentAsync()
     {
         _editorError = null;
@@ -1338,14 +1408,14 @@ else
             var model = EffectiveModel(_fProvider);
             if (_editId is null)
             {
-                var created = await AgentsSvc.CreateAsync(new CreateAiAgentRequest(_fName, _fRole, _fProvider, model, _fPrompt), actor);
+                var created = await AgentsSvc.CreateAsync(new CreateAiAgentRequest(_fName, _fRole, _fProvider, model, _fPrompt, _disabledTools.ToList()), actor);
                 if (created is null) { _editorError = "No se pudo crear el agente."; return; }
                 _editId = created.Id;
                 await ReloadCacheAsync(_editId.Value);
             }
             else
             {
-                await AgentsSvc.UpdateAsync(_editId.Value, new UpdateAiAgentRequest(_fName, _fRole, _fProvider, model, _fPrompt), actor);
+                await AgentsSvc.UpdateAsync(_editId.Value, new UpdateAiAgentRequest(_fName, _fRole, _fProvider, model, _fPrompt, _disabledTools.ToList()), actor);
             }
             await ReloadAsync();
         }
@@ -1451,6 +1521,16 @@ else
         }
         finally { _busy = false; }
     }
+
+    // Hint del navegador para el selector de archivo segun el tipo de recurso.
+    private static string? AcceptFor(AgentResourceType t) => t switch
+    {
+        AgentResourceType.Image => "image/png,image/jpeg",
+        AgentResourceType.Video => "video/mp4,video/3gpp",
+        AgentResourceType.Audio => "audio/ogg,audio/mpeg,audio/mp4",
+        AgentResourceType.Pdf => "application/pdf",
+        _ => null
+    };
 
     private async Task<(string Url, string Name)?> SaveAgentFileAsync(IBrowserFile file)
     {

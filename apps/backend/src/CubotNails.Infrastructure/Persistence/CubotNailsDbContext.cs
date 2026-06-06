@@ -47,6 +47,7 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
     public DbSet<TenantEvolutionConfig> TenantEvolutionConfigs => Set<TenantEvolutionConfig>();
     public DbSet<WhatsAppLine> WhatsAppLines => Set<WhatsAppLine>();
     public DbSet<PipelineStage> PipelineStages => Set<PipelineStage>();
+    public DbSet<BusinessUnit> BusinessUnits => Set<BusinessUnit>();
     public DbSet<PipelineFieldDefinition> PipelineFieldDefinitions => Set<PipelineFieldDefinition>();
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadActivity> LeadActivities => Set<LeadActivity>();
@@ -85,6 +86,13 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
     public DbSet<ResourceServiceLink> ResourceServiceLinks => Set<ResourceServiceLink>();
     public DbSet<ShiftTemplate> ShiftTemplates => Set<ShiftTemplate>();
     public DbSet<ScheduleException> ScheduleExceptions => Set<ScheduleException>();
+    public DbSet<SalonFieldDefinition> SalonFieldDefinitions => Set<SalonFieldDefinition>();
+    public DbSet<Sede> Sedes => Set<Sede>();
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+    public DbSet<ProductStock> ProductStocks => Set<ProductStock>();
+    public DbSet<Course> Courses => Set<Course>();
+    public DbSet<CourseRegistration> CourseRegistrations => Set<CourseRegistration>();
 
     // Modulo Citas / Agenda (Capa 2 - nucleo operativo).
     public DbSet<Client> Clients => Set<Client>();
@@ -120,6 +128,7 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
         configurationBuilder.Properties<EvolutionIntegrationStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<WebhookProcessingStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<PipelineFieldType>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<BusinessUnitModalKind>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<TaskActivityType>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<ResourceKind>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<ExceptionScope>().HaveConversion<string>().HaveMaxLength(40);
@@ -128,6 +137,8 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
         configurationBuilder.Properties<Punctuality>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<BookingChannel>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<AiAgentRunLogKind>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<SalonFieldScope>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<SalonFieldType>().HaveConversion<string>().HaveMaxLength(40);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -325,6 +336,13 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
             b.HasIndex(x => new { x.TenantId, x.SortOrder });
         });
 
+        modelBuilder.Entity<BusinessUnit>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(120).IsRequired();
+            b.Property(x => x.Color).HasMaxLength(20).IsRequired();
+            b.HasIndex(x => new { x.TenantId, x.SortOrder });
+        });
+
         modelBuilder.Entity<PipelineFieldDefinition>(b =>
         {
             b.Property(x => x.FieldKey).HasMaxLength(80).IsRequired();
@@ -442,6 +460,7 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
             b.Property(x => x.Role).HasMaxLength(100);
             b.Property(x => x.Model).HasMaxLength(100);
             b.Property(x => x.SystemPrompt).HasColumnType("text");
+            b.Property(x => x.DisabledToolsJson).HasColumnType("jsonb");
             b.HasIndex(x => new { x.TenantId, x.SortOrder });
         });
 
@@ -651,14 +670,82 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
             b.Property(x => x.Phone).HasMaxLength(40).IsRequired();
             b.Property(x => x.Email).HasMaxLength(200);
             b.Property(x => x.PreferencesJson).HasColumnType("jsonb");
+            b.Property(x => x.FieldValuesJson).HasColumnType("jsonb");
+            b.Property(x => x.BusinessUnitIdsJson).HasColumnType("jsonb");
             b.HasIndex(x => new { x.TenantId, x.Phone });
             b.HasIndex(x => new { x.TenantId, x.FullName });
+        });
+
+        modelBuilder.Entity<SalonFieldDefinition>(b =>
+        {
+            b.Property(x => x.FieldKey).HasMaxLength(80).IsRequired();
+            b.Property(x => x.Label).HasMaxLength(150).IsRequired();
+            b.Property(x => x.Options).HasColumnType("text");
+            b.Property(x => x.Description).HasMaxLength(600);
+            b.HasIndex(x => new { x.TenantId, x.Scope, x.SortOrder });
+            // FieldKey unica por (tenant, scope): identifica el valor dentro del JSON.
+            b.HasIndex(x => new { x.TenantId, x.Scope, x.FieldKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<Sede>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            b.Property(x => x.City).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Address).HasMaxLength(300);
+            b.Property(x => x.Phone).HasMaxLength(40);
+            b.HasIndex(x => new { x.TenantId, x.Name });
+        });
+
+        modelBuilder.Entity<Product>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Sku).HasMaxLength(80);
+            b.Property(x => x.Description).HasColumnType("text");
+            b.Property(x => x.Specifications).HasColumnType("text");
+            b.Property(x => x.Category).HasMaxLength(100);
+            b.Property(x => x.Price).HasPrecision(14, 2);
+            b.Property(x => x.FieldValuesJson).HasColumnType("jsonb");
+            b.HasIndex(x => new { x.TenantId, x.Name });
+        });
+
+        modelBuilder.Entity<ProductImage>(b =>
+        {
+            b.Property(x => x.Url).HasMaxLength(500).IsRequired();
+            b.Property(x => x.FileName).HasMaxLength(255);
+            b.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.ProductId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<ProductStock>(b =>
+        {
+            b.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Sede).WithMany().HasForeignKey(x => x.SedeId).OnDelete(DeleteBehavior.Cascade);
+            // Una fila de stock por (producto, sede).
+            b.HasIndex(x => new { x.ProductId, x.SedeId }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.SedeId });
+        });
+
+        modelBuilder.Entity<Course>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Description).HasColumnType("text");
+            b.Property(x => x.Price).HasPrecision(14, 2);
+            b.HasIndex(x => new { x.TenantId, x.Date });
+        });
+
+        modelBuilder.Entity<CourseRegistration>(b =>
+        {
+            b.Property(x => x.PersonName).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Phone).HasMaxLength(40);
+            b.HasOne(x => x.Course).WithMany().HasForeignKey(x => x.CourseId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.CourseId });
         });
 
         modelBuilder.Entity<Appointment>(b =>
         {
             b.Property(x => x.Notes).HasMaxLength(1000);
             b.Property(x => x.EstimatedValue).HasPrecision(14, 2);
+            b.Property(x => x.FieldValuesJson).HasColumnType("jsonb");
             // ANTI-OVERBOOKING: un solo cupo por (recurso, fecha, hora) entre citas NO canceladas.
             // Indice unico parcial: las citas Cancelled/Rescheduled liberan el cupo.
             b.HasIndex(x => new { x.TenantId, x.ResourceId, x.AppointmentDate, x.StartTime })

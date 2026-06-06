@@ -26,4 +26,10 @@ public class AiAgent : TenantEntity
     public bool IsActive { get; set; }
 
     public int SortOrder { get; set; }
+
+    /// <summary>
+    /// Herramientas (function calling / "MCP") DESHABILITADAS para este agente (jsonb, lista de nombres).
+    /// Null o vacio = todas las herramientas registradas estan habilitadas (compatibilidad hacia atras).
+    /// </summary>
+    public string? DisabledToolsJson { get; set; }
 }

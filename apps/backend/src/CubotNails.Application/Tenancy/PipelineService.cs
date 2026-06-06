@@ -20,48 +20,27 @@ public sealed class PipelineService : IPipelineService
         _audit = audit;
     }
 
-    // Etapas y campos por defecto, tomados del prototipo de diseno (embudo Travel Fans).
+    // Etapas y campos por defecto del embudo comercial del salon (4 canales de negocio).
     private static readonly (string Stage, (string Key, string Label, PipelineFieldType Type, int Col, string? Options)[] Fields)[] Defaults =
     [
-        ("Lead",
+        ("LEAD",
         [
-            ("asesor", "Asesor (ASE)", PipelineFieldType.Text, 1, null),
-            ("fechaTentativa", "Fecha tentativa", PipelineFieldType.Text, 1, null),
-            ("adultos", "Adultos (+12)", PipelineFieldType.Number, 1, null),
-            ("ninos", "Ninos (-12)", PipelineFieldType.Text, 1, null),
+            ("interes", "Interes / que busca", PipelineFieldType.Text, 2, null),
             ("comentarios", "Comentarios", PipelineFieldType.TextArea, 2, null)
         ]),
-        ("Cotizacion",
+        ("ATENCION",
         [
-            ("aerolinea", "Aerolinea", PipelineFieldType.Text, 1, null),
-            ("vueloIda", "Vuelo ida", PipelineFieldType.Text, 1, null),
-            ("vueloRegreso", "Vuelo regreso", PipelineFieldType.Text, 1, null),
-            ("valorTotalVuelos", "Valor total vuelos", PipelineFieldType.Currency, 1, null),
-            ("valorVuelosPax", "Valor x pax", PipelineFieldType.Currency, 1, null),
-            ("vuelosNinos", "Vuelo ninos", PipelineFieldType.Currency, 1, null),
-            ("hotel1", "Hotel 1", PipelineFieldType.Text, 1, null),
-            ("valorNetoHotel1", "Valor neto hotel", PipelineFieldType.Currency, 1, null),
-            ("totalAdulto1", "Total adulto", PipelineFieldType.Currency, 1, null),
-            ("totalNino1", "Total nino", PipelineFieldType.Currency, 1, null)
+            ("atendido_por", "Atendido por", PipelineFieldType.Text, 1, null),
+            ("notas_atencion", "Notas de la atencion", PipelineFieldType.TextArea, 2, null)
         ]),
-        ("Zona Inquietudes",
+        ("DUDAS / NEGOCIACION",
         [
-            ("hotel2", "Hotel 2", PipelineFieldType.Text, 1, null),
-            ("valorNetoHotel2", "Valor neto hotel 2", PipelineFieldType.Currency, 1, null),
-            ("totalAdulto2", "Total adulto", PipelineFieldType.Currency, 1, null),
-            ("totalNino2", "Total nino", PipelineFieldType.Currency, 1, null),
-            ("inquietudesNota", "Notas / objeciones del cliente", PipelineFieldType.TextArea, 2, null)
+            ("objeciones", "Dudas / objeciones", PipelineFieldType.TextArea, 2, null),
+            ("propuesta", "Propuesta", PipelineFieldType.TextArea, 2, null)
         ]),
-        ("Cierre",
+        ("CIERRE",
         [
-            ("propuesta", "Propuesta final", PipelineFieldType.TextArea, 2, null),
-            ("resultado", "Resultado", PipelineFieldType.Select, 2, "Cerrado - Ganado\nCerrado - Perdido\nEn negociacion\nPospuesto")
-        ]),
-        ("Seguimientos",
-        [
-            ("seguimiento1", "1er seguimiento", PipelineFieldType.TextArea, 2, null),
-            ("seguimiento2", "2do seguimiento", PipelineFieldType.TextArea, 2, null),
-            ("seguimiento3", "3er seguimiento", PipelineFieldType.TextArea, 2, null)
+            ("resultado", "Resultado", PipelineFieldType.Select, 2, "Ganado\nPerdido\nPospuesto")
         ])
     ];
 

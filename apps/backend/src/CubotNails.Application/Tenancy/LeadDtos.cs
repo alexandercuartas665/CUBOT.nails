@@ -13,7 +13,8 @@ public sealed record LeadDto(
     LeadStatus Status,
     Guid? AssignedToTenantUserId,
     DateTimeOffset StageChangedAt,
-    IReadOnlyDictionary<string, string?> FieldValues);
+    IReadOnlyDictionary<string, string?> FieldValues,
+    Guid? BusinessUnitId = null);
 
 public sealed record LeadActivityDto(Guid Id, string ActivityType, string? Description, DateTimeOffset CreatedAt, string? ActorName);
 
@@ -46,7 +47,8 @@ public sealed record CreateLeadRequest(
     string? Destination = null,
     decimal? EstimatedValue = null,
     string? Currency = null,
-    Guid? StageId = null);
+    Guid? StageId = null,
+    Guid? BusinessUnitId = null);
 
 public sealed record UpdateLeadRequest(
     string ContactName,
@@ -54,7 +56,8 @@ public sealed record UpdateLeadRequest(
     string? Destination,
     decimal? EstimatedValue,
     string? Currency,
-    Dictionary<string, string?>? FieldValues);
+    Dictionary<string, string?>? FieldValues,
+    Guid? BusinessUnitId = null);
 
 public sealed record MoveLeadRequest(Guid StageId, string? LossReason = null);
 

@@ -28,6 +28,9 @@ public class Appointment : TenantEntity
     public decimal? EstimatedValue { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>Valores de los campos configurables de la cita (jsonb), indexados por FieldKey.</summary>
+    public string? FieldValuesJson { get; set; }
+
     public DateTimeOffset? ConfirmedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }

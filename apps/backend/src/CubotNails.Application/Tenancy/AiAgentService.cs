@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CubotNails.Application.Common;
 using CubotNails.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -59,7 +60,8 @@ public sealed class AiAgentService : IAiAgentService
             Model = string.IsNullOrWhiteSpace(request.Model) ? null : request.Model.Trim(),
             SystemPrompt = request.SystemPrompt ?? "",
             IsActive = false,
-            SortOrder = nextOrder
+            SortOrder = nextOrder,
+            DisabledToolsJson = SerializeTools(request.DisabledTools)
         };
         _db.AiAgents.Add(agent);
         _audit.Write(actorUserId, "ai-agent.create", nameof(AiAgent), agent.Id,
@@ -77,6 +79,7 @@ public sealed class AiAgentService : IAiAgentService
         agent.Provider = request.Provider;
         agent.Model = string.IsNullOrWhiteSpace(request.Model) ? null : request.Model.Trim();
         agent.SystemPrompt = request.SystemPrompt ?? "";
+        agent.DisabledToolsJson = SerializeTools(request.DisabledTools);
         await _db.SaveChangesAsync(cancellationToken);
         var count = await _db.AiAgentResources.CountAsync(r => r.AgentId == id, cancellationToken);
         return Map(agent, count);
@@ -190,7 +193,21 @@ public sealed class AiAgentService : IAiAgentService
     }
 
     private static AiAgentDto Map(AiAgent a, int resourceCount) =>
-        new(a.Id, a.Name, a.Role, a.Provider, a.Model, a.SystemPrompt, a.IsActive, a.SortOrder, resourceCount);
+        new(a.Id, a.Name, a.Role, a.Provider, a.Model, a.SystemPrompt, a.IsActive, a.SortOrder, resourceCount, ParseTools(a.DisabledToolsJson));
+
+    // Serializacion de la lista de herramientas deshabilitadas del agente (jsonb).
+    private static string? SerializeTools(IReadOnlyList<string>? tools)
+    {
+        var clean = (tools ?? Array.Empty<string>()).Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Distinct().ToList();
+        return clean.Count == 0 ? null : JsonSerializer.Serialize(clean);
+    }
+
+    private static IReadOnlyList<string> ParseTools(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) { return Array.Empty<string>(); }
+        try { return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>(); }
+        catch { return Array.Empty<string>(); }
+    }
 
     private static AiAgentResourceDto MapResource(AiAgentResource r) =>
         new(r.Id, r.AgentId, r.Name, r.ResourceType, r.Detail, r.FileUrl, r.FileName, r.SortOrder);

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CubotNails.Application.Common;
 using CubotNails.Domain.Entities;
 using CubotNails.Domain.Enums;
@@ -10,20 +11,56 @@ public sealed record ClientHistoryItemDto(Guid AppointmentId, DateOnly Date, Tim
     string ServicesText, AppointmentStatus Status, Punctuality Punctuality, decimal EstimatedValue);
 public sealed record ClientDetailDto(Guid Id, string FullName, string Phone, string? Email, int VisitCount, int NoShowCount,
     int? PunctualityRate, decimal TotalSpent, string? PreferredResourceName, string? TopServiceName, string? Notes,
-    IReadOnlyList<ClientHistoryItemDto> History);
+    IReadOnlyList<ClientHistoryItemDto> History, IReadOnlyDictionary<string, string?>? FieldValues = null,
+    IReadOnlyList<Guid>? BusinessUnitIds = null);
 
 /// <summary>Ficha del cliente (Modulo 2.6): lista con puntualidad e historial con marcado de puntualidad por visita.</summary>
 public interface IClientService
 {
     Task<IReadOnlyList<ClientListItemDto>> ListAsync(string? search, CancellationToken cancellationToken = default);
     Task<ClientDetailDto?> GetDetailAsync(Guid id, CancellationToken cancellationToken = default);
+    /// <summary>Guarda los valores de los campos configurables del cliente (ficha).</summary>
+    Task<bool> SaveFieldValuesAsync(Guid clientId, IReadOnlyDictionary<string, string?> values, Guid actorUserId, CancellationToken cancellationToken = default);
+    /// <summary>Guarda los canales / unidades de negocio del cliente (multi-canal).</summary>
+    Task<bool> SaveBusinessUnitsAsync(Guid clientId, IReadOnlyList<Guid> businessUnitIds, Guid actorUserId, CancellationToken cancellationToken = default);
+    /// <summary>Busca un cliente por telefono (o nombre) y lo crea si no existe. Devuelve su Id. Usado por el puente desde el pipeline.</summary>
+    Task<Guid?> EnsureByPhoneAsync(string name, string? phone, Guid actorUserId, CancellationToken cancellationToken = default);
 }
 
 public sealed class ClientService : IClientService
 {
     private readonly IApplicationDbContext _db;
+    private readonly ITenantContext _tenant;
 
-    public ClientService(IApplicationDbContext db) => _db = db;
+    public ClientService(IApplicationDbContext db, ITenantContext tenant)
+    {
+        _db = db;
+        _tenant = tenant;
+    }
+
+    public async Task<Guid?> EnsureByPhoneAsync(string name, string? phone, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (_tenant.TenantId is not Guid tenantId) { return null; }
+        var clean = (name ?? string.Empty).Trim();
+        var ph = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+
+        if (ph is not null)
+        {
+            var byPhone = await _db.Clients.FirstOrDefaultAsync(c => c.Phone == ph, cancellationToken);
+            if (byPhone is not null) { return byPhone.Id; }
+        }
+        if (clean.Length > 0)
+        {
+            var byName = await _db.Clients.FirstOrDefaultAsync(c => c.FullName == clean, cancellationToken);
+            if (byName is not null) { return byName.Id; }
+        }
+        if (clean.Length == 0 && ph is null) { return null; }
+
+        var created = new Client { TenantId = tenantId, FullName = clean.Length == 0 ? (ph ?? "Cliente") : clean, Phone = ph ?? string.Empty };
+        _db.Clients.Add(created);
+        await _db.SaveChangesAsync(cancellationToken);
+        return created.Id;
+    }
 
     // Tasa de puntualidad (derivada): OnTime / (OnTime + Late). Null si no hay datos.
     private static int? Rate(int onTime, int late) => (onTime + late) == 0 ? null : (int)Math.Round(onTime * 100.0 / (onTime + late));
@@ -86,6 +123,34 @@ public sealed class ClientService : IClientService
             a.Status, a.Punctuality, a.EstimatedValue ?? 0m)).ToList();
 
         return new ClientDetailDto(c.Id, c.FullName, c.Phone, c.Email, c.VisitCount, c.NoShowCount,
-            Rate(c.OnTimeCount, c.LateCount), totalSpent, preferred, topService, null, history);
+            Rate(c.OnTimeCount, c.LateCount), totalSpent, preferred, topService, null, history,
+            SalonFieldJson.Parse(c.FieldValuesJson), ParseUnitIds(c.BusinessUnitIdsJson));
+    }
+
+    // Serializacion de la lista de canales (unidades de negocio) del cliente.
+    private static IReadOnlyList<Guid> ParseUnitIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) { return Array.Empty<Guid>(); }
+        try { return JsonSerializer.Deserialize<List<Guid>>(json) ?? new List<Guid>(); }
+        catch { return Array.Empty<Guid>(); }
+    }
+
+    public async Task<bool> SaveFieldValuesAsync(Guid clientId, IReadOnlyDictionary<string, string?> values, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var client = await _db.Clients.FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
+        if (client is null) { return false; }
+        client.FieldValuesJson = SalonFieldJson.Serialize(values);
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> SaveBusinessUnitsAsync(Guid clientId, IReadOnlyList<Guid> businessUnitIds, Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        var client = await _db.Clients.FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
+        if (client is null) { return false; }
+        var ids = (businessUnitIds ?? Array.Empty<Guid>()).Distinct().ToList();
+        client.BusinessUnitIdsJson = ids.Count == 0 ? null : JsonSerializer.Serialize(ids);
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
     }
 }

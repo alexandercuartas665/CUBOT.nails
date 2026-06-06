@@ -5,6 +5,7 @@
 @using CubotNails.Domain.Enums
 @inject IResourceService Resources
 @inject IAgendaService Agenda
+@inject ISalonFieldService Fields
 
 <PageTitle>Dia del salon - CUBOT.nails</PageTitle>
 
@@ -41,6 +42,13 @@ else
         <div class="kpi-card"><div class="kpi-label">Sin confirmar</div><div class="kpi-value">@_board.Kpis.Unconfirmed</div></div>
         <div class="kpi-card"><div class="kpi-label">Ingresos completados</div><div class="kpi-value" style="color:var(--success);">$@_board.Kpis.IncomeCompleted.ToString("N0")</div></div>
         <div class="kpi-card"><div class="kpi-label">No-show</div><div class="kpi-value" style="color:var(--destructive);">@_board.Kpis.NoShow</div></div>
+    </div>
+
+    <div style="margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <span class="text-muted" style="font-size:12px;">Llegada:</span>
+        <span style="font-size:11.5px;display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;border-radius:50%;background:#22c55e;display:inline-block;"></span>Temprano</span>
+        <span style="font-size:11.5px;display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;border-radius:50%;background:#3b82f6;display:inline-block;"></span>Puntual</span>
+        <span style="font-size:11.5px;display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;border-radius:50%;background:#f97316;display:inline-block;"></span>Tarde</span>
     </div>
 
     @if (_rows.Count == 0)
@@ -80,8 +88,17 @@ else
                                         {
                                             <span style="position:absolute;top:-7px;right:5px;background:#C7398B;color:#fff;font-size:9px;font-weight:800;padding:1px 6px;border-radius:99px;">@appt.ChainSequence/@appt.ChainTotal</span>
                                         }
+                                        @if (appt.Punctuality != Punctuality.Unknown)
+                                        {
+                                            <span title="Llegada: @PunctLabel(appt.Punctuality)" style="position:absolute;top:-5px;left:5px;width:12px;height:12px;border-radius:50%;background:@PunctColor(appt.Punctuality);box-shadow:0 0 0 2px #fff;"></span>
+                                        }
                                         <div>@appt.StartTime.ToString("HH\\:mm") @(appt.ClientName ?? "?")</div>
                                         <small style="opacity:.9;">@appt.ServicesText</small>
+                                        @{ var bl = BoardLine(appt); }
+                                        @if (!string.IsNullOrEmpty(bl))
+                                        {
+                                            <small style="opacity:.85;font-weight:600;border-top:1px solid rgba(255,255,255,.3);margin-top:2px;padding-top:2px;">@bl</small>
+                                        }
                                     </div>
                                 </div>
                             }
@@ -112,8 +129,11 @@ else
 }
 
 <BookingModal @ref="_modal" Resources="_resources" OnSaved="LoadAsync" />
+@* El configurador de campos se movio a la config del embudo (Pipeline > unidad "Asesoria de imagen"). *@
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     private bool _loading = true;
     private DateOnly _date = DateOnly.FromDateTime(DateTime.Today);
     private DayBoardDto? _board;
@@ -122,12 +142,56 @@ else
     private int _minSlot = 30;
     private BookingModal _modal = default!;
 
+    // Campos configurables de la cita marcados "ver en tablero".
+    private List<SalonFieldDto> _boardFields = new();
+
     protected override async Task OnInitializedAsync()
     {
         _resources = (await Resources.ListAsync()).ToList();
+        await LoadBoardFieldsAsync();
         await LoadAsync();
         _loading = false;
     }
+
+    private async Task LoadBoardFieldsAsync()
+        => _boardFields = (await Fields.ListAsync(SalonFieldScope.Appointment)).Where(f => f.ShowOnBoard).ToList();
+
+    private async Task<Guid> ActorAsync()
+    {
+        if (AuthState is null) { return Guid.Empty; }
+        var st = await AuthState;
+        return Guid.TryParse(st.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+    }
+
+    private string BoardLine(DayApptDto a)
+    {
+        if (_boardFields.Count == 0 || a.FieldValues is null) { return ""; }
+        var parts = new List<string>();
+        foreach (var bf in _boardFields)
+        {
+            if (a.FieldValues.TryGetValue(bf.FieldKey, out var v) && !string.IsNullOrWhiteSpace(v))
+            {
+                parts.Add($"{bf.Label}: {v}");
+            }
+        }
+        return string.Join(" · ", parts);
+    }
+
+    private static string PunctColor(Punctuality p) => p switch
+    {
+        Punctuality.Early => "#22c55e",
+        Punctuality.OnTime => "#3b82f6",
+        Punctuality.Late => "#f97316",
+        _ => "transparent"
+    };
+
+    private static string PunctLabel(Punctuality p) => p switch
+    {
+        Punctuality.Early => "Temprano",
+        Punctuality.OnTime => "Puntual",
+        Punctuality.Late => "Tarde",
+        _ => "-"
+    };
 
     private async Task LoadAsync()
     {

@@ -16,7 +16,7 @@ public sealed class AiInferenceService : IAiInferenceService
     private readonly IAiProviderClient _client;
     private readonly IAiUsageService _usage;
     private readonly IAiAgentCacheService _cache;
-    private readonly IAgendaToolset _toolset;
+    private readonly IReadOnlyList<IAgentToolset> _toolsets;
     private readonly TimeProvider _clock;
 
     // Tope de vueltas del bucle de herramientas: evita ciclos infinitos si el modelo insiste en llamar tools.
@@ -26,15 +26,29 @@ public sealed class AiInferenceService : IAiInferenceService
     // guarde su propia zona, anclamos aqui para que el agente calcule fechas relativas con el anio correcto.
     private static readonly TimeSpan SalonOffset = TimeSpan.FromHours(-5);
 
-    public AiInferenceService(IApplicationDbContext db, ISecretProtector secretProtector, IAiProviderClient client, IAiUsageService usage, IAiAgentCacheService cache, IAgendaToolset toolset, TimeProvider clock)
+    public AiInferenceService(IApplicationDbContext db, ISecretProtector secretProtector, IAiProviderClient client, IAiUsageService usage, IAiAgentCacheService cache, IEnumerable<IAgentToolset> toolsets, TimeProvider clock)
     {
         _db = db;
         _secretProtector = secretProtector;
         _client = client;
         _usage = usage;
         _cache = cache;
-        _toolset = toolset;
+        _toolsets = toolsets.ToList();
         _clock = clock;
+    }
+
+    // Herramientas que el agente tiene DESHABILITADAS (AiAgent.DisabledToolsJson). Vacio = todas habilitadas.
+    private static HashSet<string> ParseDisabledTools(string? json)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(json)) { return set; }
+        try
+        {
+            var list = JsonSerializer.Deserialize<List<string>>(json);
+            if (list is not null) { foreach (var t in list) { if (!string.IsNullOrWhiteSpace(t)) { set.Add(t.Trim()); } } }
+        }
+        catch { /* json invalido: no deshabilitamos nada */ }
+        return set;
     }
 
     // Chat de prueba: la sesion de cache es el AgentId y el operador prueba con reservas reales (autonomo).
@@ -106,8 +120,9 @@ public sealed class AiInferenceService : IAiInferenceService
         // Bucle de herramientas (function calling): el agente puede consultar agenda/asesores/precios y
         // reservar citas in-process. Si el modelo no llama ninguna herramienta, equivale a una respuesta normal.
         var actor = actorUserId;
+        var disabledTools = ParseDisabledTools(agent.DisabledToolsJson);
         var (result, bookingCreated) = await RunToolLoopAsync(
-            agent.Provider, apiKey, providerCfg.BaseUrl, model, systemPrompt, turns, autonomous, actor, debugPrompts, cancellationToken);
+            agent.Provider, apiKey, providerCfg.BaseUrl, model, systemPrompt, turns, autonomous, actor, disabledTools, debugPrompts, cancellationToken);
 
         // Todo consumo de IA del tenant pasa por el modulo de tokens (incluido el chat de prueba).
         if (result.Ok)
@@ -180,9 +195,21 @@ public sealed class AiInferenceService : IAiInferenceService
     /// </summary>
     private async Task<(AiChatResult Result, bool BookingCreated)> RunToolLoopAsync(
         AiProvider provider, string apiKey, string? baseUrl, string model, string systemPrompt,
-        IReadOnlyList<AiChatTurn> turns, bool autonomous, Guid actorUserId, List<AiDebugPrompt> debugPrompts, CancellationToken ct)
+        IReadOnlyList<AiChatTurn> turns, bool autonomous, Guid actorUserId, ISet<string> disabledTools, List<AiDebugPrompt> debugPrompts, CancellationToken ct)
     {
-        var specs = _toolset.GetSpecs();
+        // Agregamos las herramientas de TODOS los toolsets registrados, omitiendo las que el agente
+        // tiene deshabilitadas. Mapeamos cada nombre de herramienta a su toolset para el despacho.
+        var specs = new List<AiToolSpec>();
+        var ownerByTool = new Dictionary<string, IAgentToolset>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ts in _toolsets)
+        {
+            foreach (var spec in ts.GetSpecs())
+            {
+                if (disabledTools.Contains(spec.Name) || ownerByTool.ContainsKey(spec.Name)) { continue; }
+                ownerByTool[spec.Name] = ts;
+                specs.Add(spec);
+            }
+        }
 
         // Historial inicial: los turnos del chat como mensajes de herramienta.
         var messages = new List<AiToolMessage>();
@@ -228,7 +255,10 @@ public sealed class AiInferenceService : IAiInferenceService
             // Ejecuta cada herramienta in-process y agrega su resultado como mensaje "tool".
             foreach (var call in completion.ToolCalls)
             {
-                var exec = await _toolset.ExecuteAsync(call.Name, call.ArgumentsJson, actorUserId, autonomous, ct);
+                var owner = ownerByTool.GetValueOrDefault(call.Name);
+                var exec = owner is null
+                    ? new AgendaToolResult(JsonSerializer.Serialize(new { ok = false, error = $"Herramienta no disponible o deshabilitada: {call.Name}" }), false)
+                    : await owner.ExecuteAsync(call.Name, call.ArgumentsJson, actorUserId, autonomous, ct);
                 if (exec.BookingCreated) { bookingCreated = true; }
 
                 debugPrompts.Add(new AiDebugPrompt(

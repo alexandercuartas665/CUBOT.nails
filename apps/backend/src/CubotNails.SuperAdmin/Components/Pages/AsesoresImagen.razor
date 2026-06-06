@@ -5,6 +5,7 @@
 @using CubotNails.Domain.Enums
 @inject IResourceService Resources
 @inject IServiceCatalogService Services
+@inject ISedeService SedesSvc
 @inject IJSRuntime JS
 
 <PageTitle>Asesores de imagen - CUBOT.nails</PageTitle>
@@ -106,6 +107,16 @@ else
                             </select>
                         </div>
                         <div class="field">
+                            <label class="form-label">Sede</label>
+                            <select class="form-control" value="@(_form.SedeId?.ToString() ?? "")" @onchange="OnSedeChanged">
+                                <option value="">(sin sede)</option>
+                                @foreach (var s in _sedes)
+                                {
+                                    <option value="@s.Id">@s.Name &mdash; @s.City</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="field">
                             <label class="form-label">Color en la agenda</label>
                             <input class="form-control" type="color" @bind="_form.Color" style="height:42px;padding:4px;" />
                         </div>
@@ -165,13 +176,18 @@ else
     private Guid? _editingId;
     private List<ResourceDto> _items = new();
     private List<ServiceDto> _services = new();
+    private List<SedeDto> _sedes = new();
     private FormModel _form = new();
 
     protected override async Task OnInitializedAsync()
     {
         _services = (await Services.ListAsync()).ToList();
+        _sedes = (await SedesSvc.ListAsync()).ToList();
         await ReloadAsync();
     }
+
+    private void OnSedeChanged(ChangeEventArgs e)
+        => _form.SedeId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null;
 
     private async Task ReloadAsync()
     {
@@ -191,6 +207,7 @@ else
             Kind = a?.Kind ?? ResourceKind.Image,
             Color = string.IsNullOrWhiteSpace(a?.Color) ? "#A03DC9" : a!.Color!,
             Notes = a?.Notes,
+            SedeId = a?.SedeId,
             Links = _services.Select(s => new LinkRow
             {
                 ServiceId = s.Id,
@@ -213,7 +230,7 @@ else
             var links = _form.Links.Where(r => r.Enabled)
                 .Select(r => new ResourceLinkInput(r.ServiceId, _form.Kind == ResourceKind.Image ? r.PriceOverride : null))
                 .ToList();
-            var req = new SaveResourceRequest(_form.Name, _form.Kind, _form.Color, _form.Phone, _form.Notes, links);
+            var req = new SaveResourceRequest(_form.Name, _form.Kind, _form.Color, _form.Phone, _form.Notes, links, _form.SedeId);
             var result = _editingId is Guid id ? await Resources.UpdateAsync(id, req, await ActorAsync()) : await Resources.CreateAsync(req, await ActorAsync());
             if (result is null) { _error = "No se pudo guardar."; return; }
             _formOpen = false;
@@ -254,6 +271,7 @@ else
         public ResourceKind Kind { get; set; } = ResourceKind.Image;
         public string Color { get; set; } = "#A03DC9";
         public string? Notes { get; set; }
+        public Guid? SedeId { get; set; }
         public List<LinkRow> Links { get; set; } = new();
     }
 

@@ -17,6 +17,7 @@ public interface IApplicationDbContext
     DbSet<WhatsAppLine> WhatsAppLines { get; }
     DbSet<PipelineStage> PipelineStages { get; }
     DbSet<PipelineFieldDefinition> PipelineFieldDefinitions { get; }
+    DbSet<BusinessUnit> BusinessUnits { get; }
     DbSet<Lead> Leads { get; }
     DbSet<LeadActivity> LeadActivities { get; }
     DbSet<LeadNote> LeadNotes { get; }
@@ -64,6 +65,13 @@ public interface IApplicationDbContext
     // Configuracion del salon (Capa 2).
     DbSet<Service> Services { get; }
     DbSet<Resource> Resources { get; }
+    DbSet<Sede> Sedes { get; }
+    DbSet<Product> Products { get; }
+    DbSet<ProductImage> ProductImages { get; }
+    DbSet<ProductStock> ProductStocks { get; }
+    DbSet<Course> Courses { get; }
+    DbSet<CourseRegistration> CourseRegistrations { get; }
+    DbSet<SalonFieldDefinition> SalonFieldDefinitions { get; }
     DbSet<ResourceServiceLink> ResourceServiceLinks { get; }
     DbSet<ShiftTemplate> ShiftTemplates { get; }
     DbSet<ScheduleException> ScheduleExceptions { get; }

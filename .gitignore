@@ -74,3 +74,6 @@ tools/
 # pensada para el prototipo JS, lo estaba ignorando y rompia el CSS en produccion).
 !apps/backend/src/CubotNails.SuperAdmin/wwwroot/lib/
 !apps/backend/src/CubotNails.SuperAdmin/wwwroot/lib/**
+
+# Artefacto de runtime del script start local.
+.cubot-pid

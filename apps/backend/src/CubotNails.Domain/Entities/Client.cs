@@ -13,6 +13,10 @@ public class Client : TenantEntity
     public string? Email { get; set; }
     public Guid? PreferredResourceId { get; set; }
     public string? PreferencesJson { get; set; }
+    /// <summary>Valores de los campos configurables del cliente (jsonb), indexados por FieldKey.</summary>
+    public string? FieldValuesJson { get; set; }
+    /// <summary>Canales / unidades de negocio a las que pertenece el cliente (jsonb, lista de ids). Multi-canal.</summary>
+    public string? BusinessUnitIdsJson { get; set; }
     public int VisitCount { get; set; }
     public int NoShowCount { get; set; }
     public int OnTimeCount { get; set; }

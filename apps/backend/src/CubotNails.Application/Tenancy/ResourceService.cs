@@ -6,9 +6,9 @@ using Microsoft.EntityFrameworkCore;
 namespace CubotNails.Application.Tenancy;
 
 public sealed record ResourceLinkDto(Guid ServiceId, string ServiceName, decimal BasePrice, int DurationMinutes, decimal? PriceOverride, decimal EffectivePrice);
-public sealed record ResourceDto(Guid Id, string Name, ResourceKind Kind, string? Color, string? Phone, string? Notes, bool IsActive, IReadOnlyList<ResourceLinkDto> Services);
+public sealed record ResourceDto(Guid Id, string Name, ResourceKind Kind, string? Color, string? Phone, string? Notes, bool IsActive, IReadOnlyList<ResourceLinkDto> Services, Guid? SedeId = null, string? SedeName = null);
 public sealed record ResourceLinkInput(Guid ServiceId, decimal? PriceOverride);
-public sealed record SaveResourceRequest(string Name, ResourceKind Kind, string? Color, string? Phone, string? Notes, IReadOnlyList<ResourceLinkInput> Services);
+public sealed record SaveResourceRequest(string Name, ResourceKind Kind, string? Color, string? Phone, string? Notes, IReadOnlyList<ResourceLinkInput> Services, Guid? SedeId = null);
 
 /// <summary>
 /// Asesores de imagen y estaciones del salon (Resource) con sus servicios habilitados y precios
@@ -38,7 +38,8 @@ public sealed class ResourceService : IResourceService
         var resources = await _db.Resources.AsNoTracking().OrderBy(r => r.Name).ToListAsync(cancellationToken);
         var links = await _db.ResourceServiceLinks.AsNoTracking().ToListAsync(cancellationToken);
         var svcById = await _db.Services.AsNoTracking().ToDictionaryAsync(s => s.Id, cancellationToken);
-        return resources.Select(r => Map(r, links.Where(l => l.ResourceId == r.Id), svcById)).ToList();
+        var sedeNames = await _db.Sedes.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Name, cancellationToken);
+        return resources.Select(r => Map(r, links.Where(l => l.ResourceId == r.Id), svcById, sedeNames)).ToList();
     }
 
     public async Task<ResourceDto?> CreateAsync(SaveResourceRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -55,6 +56,7 @@ public sealed class ResourceService : IResourceService
             Color = Clean(request.Color),
             Phone = Clean(request.Phone),
             Notes = Clean(request.Notes),
+            SedeId = request.SedeId,
             IsActive = true
         };
         _db.Resources.Add(resource);
@@ -77,6 +79,7 @@ public sealed class ResourceService : IResourceService
         resource.Color = Clean(request.Color);
         resource.Phone = Clean(request.Phone);
         resource.Notes = Clean(request.Notes);
+        resource.SedeId = request.SedeId;
 
         var existing = await _db.ResourceServiceLinks.Where(l => l.ResourceId == id).ToListAsync(cancellationToken);
         _db.ResourceServiceLinks.RemoveRange(existing);
@@ -124,10 +127,11 @@ public sealed class ResourceService : IResourceService
         var links = await _db.ResourceServiceLinks.AsNoTracking().Where(l => l.ResourceId == id).ToListAsync(cancellationToken);
         var svcIds = links.Select(l => l.ServiceId).ToList();
         var svcById = await _db.Services.AsNoTracking().Where(s => svcIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, cancellationToken);
-        return Map(resource, links, svcById);
+        var sedeNames = await _db.Sedes.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Name, cancellationToken);
+        return Map(resource, links, svcById, sedeNames);
     }
 
-    private static ResourceDto Map(Resource r, IEnumerable<ResourceServiceLink> links, IReadOnlyDictionary<Guid, Service> svcById)
+    private static ResourceDto Map(Resource r, IEnumerable<ResourceServiceLink> links, IReadOnlyDictionary<Guid, Service> svcById, IReadOnlyDictionary<Guid, string> sedeNames)
     {
         var linkDtos = links
             .Where(l => svcById.ContainsKey(l.ServiceId))
@@ -140,7 +144,8 @@ public sealed class ResourceService : IResourceService
             })
             .OrderBy(l => l.ServiceName)
             .ToList();
-        return new ResourceDto(r.Id, r.Name, r.Kind, r.Color, r.Phone, r.Notes, r.IsActive, linkDtos);
+        string? sedeName = r.SedeId is Guid sid && sedeNames.TryGetValue(sid, out var sn) ? sn : null;
+        return new ResourceDto(r.Id, r.Name, r.Kind, r.Color, r.Phone, r.Notes, r.IsActive, linkDtos, r.SedeId, sedeName);
     }
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

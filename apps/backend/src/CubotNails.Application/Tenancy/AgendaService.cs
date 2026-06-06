@@ -12,7 +12,8 @@ public sealed record ClientSuggestionDto(Guid Id, string Name, string Phone);
 
 public sealed record DayShiftDto(TimeOnly Start, TimeOnly End, int SlotMinutes);
 public sealed record DayApptDto(Guid Id, TimeOnly StartTime, int DurationMinutes, string? ClientName, string ServicesText,
-    AppointmentStatus Status, Guid? ChainId, int? ChainSequence, int? ChainTotal);
+    AppointmentStatus Status, Guid? ChainId, int? ChainSequence, int? ChainTotal,
+    Punctuality Punctuality = Punctuality.Unknown, IReadOnlyDictionary<string, string?>? FieldValues = null);
 public sealed record DayResourceDto(Guid Id, string Name, ResourceKind Kind, string Color, bool BlockedAllDay,
     IReadOnlyList<DayShiftDto> Shifts, IReadOnlyList<DayApptDto> Appointments);
 public sealed record DayKpisDto(int Total, int Unconfirmed, decimal IncomeCompleted, int NoShow);
@@ -29,7 +30,8 @@ public sealed record SlotDto(TimeOnly Time, bool Occupied, Guid? AppointmentId, 
 public sealed record AppointmentChatDto(bool Outbound, string Body, string Time);
 public sealed record AppointmentDetailDto(Guid Id, Guid ResourceId, string ResourceName, DateOnly Date, TimeOnly StartTime,
     Guid? ClientId, string? ClientName, string? ClientPhone, AppointmentStatus Status, Punctuality Punctuality, string? Notes,
-    IReadOnlyList<Guid> ServiceIds, IReadOnlyList<AppointmentChatDto> Chat, Guid? ChainId, int? ChainSequence, int? ChainTotal);
+    IReadOnlyList<Guid> ServiceIds, IReadOnlyList<AppointmentChatDto> Chat, Guid? ChainId, int? ChainSequence, int? ChainTotal,
+    IReadOnlyDictionary<string, string?>? FieldValues = null);
 
 // ===== DTOs de escritura (reserva) =====
 
@@ -38,7 +40,8 @@ public sealed record BookingChatLine(bool Outbound, string Body);
 public sealed record BookingRequest(Guid? AppointmentId, Guid ResourceId, DateOnly Date, TimeOnly StartTime,
     string ClientName, string? ClientPhone, Guid? ClientId, IReadOnlyList<Guid> ServiceIds,
     AppointmentStatus Status, Punctuality Punctuality, string? Notes,
-    IReadOnlyList<BookingChainStep> ChainSteps, IReadOnlyList<BookingChatLine> Chat, Guid? RescheduledFromId = null);
+    IReadOnlyList<BookingChainStep> ChainSteps, IReadOnlyList<BookingChatLine> Chat, Guid? RescheduledFromId = null,
+    IReadOnlyDictionary<string, string?>? FieldValues = null);
 public sealed record BookingResult(bool Success, Guid? AppointmentId, string? Error);
 public sealed record RescheduleItemDto(Guid AppointmentId, Guid ResourceId, string ResourceName, DateOnly Date, TimeOnly StartTime,
     Guid? ClientId, string? ClientName, string? ClientPhone, string ServicesText, IReadOnlyList<Guid> ServiceIds, DateTimeOffset? CancelledAt);
@@ -147,7 +150,8 @@ public sealed class AgendaService : IAgendaService
                 a.Id, a.StartTime, a.DurationMinutes,
                 a.ClientId is Guid cid && clientNames.TryGetValue(cid, out var n) ? n : null,
                 servicesText.TryGetValue(a.Id, out var st) ? st : "",
-                a.Status, a.ChainId, a.ChainSequence, a.ChainTotal)).ToList()
+                a.Status, a.ChainId, a.ChainSequence, a.ChainTotal,
+                a.Punctuality, SalonFieldJson.Parse(a.FieldValuesJson))).ToList()
         )).ToList();
 
         var kpis = new DayKpisDto(
@@ -266,7 +270,7 @@ public sealed class AgendaService : IAgendaService
 
         return new AppointmentDetailDto(a.Id, a.ResourceId, resource?.Name ?? "", a.AppointmentDate, a.StartTime,
             a.ClientId, client?.FullName, client?.Phone, a.Status, a.Punctuality, a.Notes,
-            serviceIds, chat, a.ChainId, a.ChainSequence, a.ChainTotal);
+            serviceIds, chat, a.ChainId, a.ChainSequence, a.ChainTotal, SalonFieldJson.Parse(a.FieldValuesJson));
     }
 
     public async Task<BookingResult> SaveBookingAsync(BookingRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -298,6 +302,7 @@ public sealed class AgendaService : IAgendaService
             appt.Status = request.Status;
             appt.Punctuality = request.Punctuality;
             appt.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+            appt.FieldValuesJson = SalonFieldJson.Serialize(request.FieldValues);
             StampLifecycle(appt, now);
 
             await ReplaceServiceItemsAsync(appt.Id, tenantId, request.ServiceIds, prices, cancellationToken);
@@ -318,6 +323,7 @@ public sealed class AgendaService : IAgendaService
             DurationMinutes = totalDuration, ClientId = client?.Id, Status = request.Status, Punctuality = request.Punctuality,
             Channel = BookingChannel.Reception, EstimatedValue = totalValue,
             Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
+            FieldValuesJson = SalonFieldJson.Serialize(request.FieldValues),
             ChainId = chainId, ChainSequence = chainId is null ? null : 1, ChainTotal = chainId is null ? null : chainTotal,
             RescheduledFromId = request.RescheduledFromId
         };

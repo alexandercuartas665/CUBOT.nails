@@ -111,7 +111,8 @@ public sealed class LeadService : ILeadService
             StageId = stage.Id,
             Status = LeadStatus.Open,
             StageChangedAt = now,
-            AssignedToTenantUserId = assignedTo
+            AssignedToTenantUserId = assignedTo,
+            BusinessUnitId = request.BusinessUnitId
         };
         _db.Leads.Add(lead);
         AddActivity(tenantId, lead.Id, "lead.created", $"Lead creado en etapa {stage.Name}");
@@ -135,6 +136,7 @@ public sealed class LeadService : ILeadService
         lead.Destination = request.Destination?.Trim();
         lead.EstimatedValue = request.EstimatedValue;
         lead.Currency = request.Currency?.Trim();
+        lead.BusinessUnitId = request.BusinessUnitId;
 
         var values = request.FieldValues ?? new Dictionary<string, string?>();
         // Se descartan claves vacias para no inflar el documento.
@@ -414,7 +416,7 @@ public sealed class LeadService : ILeadService
     private static string PhoneDigits(string? s) => string.IsNullOrEmpty(s) ? string.Empty : new string(s.Where(char.IsDigit).ToArray());
 
     private static LeadDto Map(Lead l) =>
-        new(l.Id, l.ContactName, l.ContactPhone, l.Destination, l.EstimatedValue, l.Currency, l.StageId, l.Status, l.AssignedToTenantUserId, l.StageChangedAt, DeserializeValues(l.FieldValuesJson));
+        new(l.Id, l.ContactName, l.ContactPhone, l.Destination, l.EstimatedValue, l.Currency, l.StageId, l.Status, l.AssignedToTenantUserId, l.StageChangedAt, DeserializeValues(l.FieldValuesJson), l.BusinessUnitId);
 
     private static IReadOnlyDictionary<string, string?> DeserializeValues(string? json)
     {

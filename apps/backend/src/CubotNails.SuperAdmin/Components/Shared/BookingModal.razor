@@ -1,6 +1,7 @@
 @using CubotNails.Application.Tenancy
 @using CubotNails.Domain.Enums
 @inject IAgendaService Agenda
+@inject ISalonFieldService Fields
 @inject IJSRuntime JS
 
 @if (_visible)
@@ -9,14 +10,14 @@
         <div class="modal-dialog pl-lead-dialog">
           <div class="pl-lead-left">
             <div class="modal-head">
-                <h3>@(_reschedule ? "Reprogramar cita" : (_appointmentId is null ? "Reservar cita" : "Editar cita"))</h3>
+                <h3>@(_reschedule ? "Reprogramar cita" : (_freeSlot ? "Atender cliente" : (_appointmentId is null ? "Reservar cita" : "Editar cita")))</h3>
                 <button class="modal-close" @onclick="Close">&times;</button>
             </div>
             <div class="modal-body">
-                @if (_reschedule)
+                @if (_reschedule || _freeSlot)
                 {
                     <div style="background:#fff7ed;border:1px dashed #f59e0b;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
-                        <div style="font-weight:700;color:#92400E;font-size:13px;margin-bottom:8px;">@_slotLabel &mdash; elige nuevo asesor, fecha y hora</div>
+                        <div style="font-weight:700;color:#92400E;font-size:13px;margin-bottom:8px;">@_slotLabel &mdash; elige asesor, fecha y hora</div>
                         <div class="field">
                             <label class="form-label">Asesor</label>
                             <select class="form-control" @bind="_resourceId" @bind:after="ReloadOptionsAsync">
@@ -74,7 +75,7 @@
                             <div style="display:flex;gap:6px;flex-wrap:wrap;">
                                 @foreach (var (p, label) in _punctOptions)
                                 {
-                                    <button type="button" class="@PunctClass(p)" @onclick="() => _punctuality = p">@label</button>
+                                    <button type="button" class="btn btn-sm" style="@PunctStyle(p)" @onclick="() => _punctuality = p">@label</button>
                                 }
                             </div>
                         </div>
@@ -147,6 +148,13 @@
                     </div>
 
                 </div>
+                @if (_apptFields.Count > 0)
+                {
+                    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+                        <label class="form-label">Datos de la cita</label>
+                        <SalonFieldsEditor Fields="_apptFields" Values="_fieldValues" />
+                    </div>
+                }
                 @if (_error is not null)
                 {
                     <div class="text-danger small" style="margin-top:10px;">@_error</div>
@@ -181,6 +189,9 @@
     private string _slotLabel = "";
     private Guid? _appointmentId;
     private bool _reschedule;
+    // Atencion libre (sin cupo previo): el usuario elige asesor/fecha/hora con el cliente prefijado.
+    // Se usa al abrir el modal del salon desde una tarjeta de "Asesoria de imagen" en el pipeline.
+    private bool _freeSlot;
     private Guid? _rescheduledFromId;
     private Guid _resourceId;
     private DateOnly _date;
@@ -198,14 +209,18 @@
     private Guid _chainResource;
     private TimeOnly _chainTime = new(10, 0);
     private List<ClientSuggestionDto> _suggestions = new();
+    // Campos configurables de la cita + sus valores capturados.
+    private List<SalonFieldDto> _apptFields = new();
+    private Dictionary<string, string?> _fieldValues = new();
 
     public async Task OpenForNewAsync(Guid resourceId, DateOnly date, TimeOnly time, string resourceName)
     {
-        _appointmentId = null; _reschedule = false; _rescheduledFromId = null; _resourceId = resourceId; _date = date; _startTime = time;
+        _appointmentId = null; _reschedule = false; _freeSlot = false; _rescheduledFromId = null; _resourceId = resourceId; _date = date; _startTime = time;
         _clientName = ""; _clientPhone = ""; _clientId = null;
         _status = AppointmentStatus.Scheduled; _punctuality = Punctuality.Unknown; _notes = null;
         _chosen = new(); _chain = new(); _suggestions = new(); _error = null;
         _slotLabel = $"{resourceName} - {date:yyyy-MM-dd} {time:HH\\:mm}";
+        await LoadFieldsAsync(null);
         _options = (await Agenda.GetServiceOptionsAsync(resourceId)).ToList();
         _svcToAdd = _options.FirstOrDefault()?.Id ?? Guid.Empty;
         _chainResource = Resources.FirstOrDefault()?.Id ?? Guid.Empty;
@@ -217,26 +232,46 @@
     {
         var d = await Agenda.GetAppointmentAsync(appointmentId);
         if (d is null) { return; }
-        _appointmentId = appointmentId; _reschedule = false; _rescheduledFromId = null; _resourceId = d.ResourceId; _date = d.Date; _startTime = d.StartTime;
+        _appointmentId = appointmentId; _reschedule = false; _freeSlot = false; _rescheduledFromId = null; _resourceId = d.ResourceId; _date = d.Date; _startTime = d.StartTime;
         _clientName = d.ClientName ?? ""; _clientPhone = d.ClientPhone ?? ""; _clientId = d.ClientId;
         _status = d.Status; _punctuality = d.Punctuality; _notes = d.Notes;
         _chosen = d.ServiceIds.ToList(); _chain = new(); _suggestions = new(); _error = null;
         _slotLabel = $"{d.ResourceName} - {d.Date:yyyy-MM-dd} {d.StartTime:HH\\:mm}";
         _options = (await Agenda.GetServiceOptionsAsync(d.ResourceId)).ToList();
         _svcToAdd = _options.FirstOrDefault()?.Id ?? Guid.Empty;
+        await LoadFieldsAsync(d.FieldValues);
         _visible = true;
         StateHasChanged();
     }
 
     // Reprogramacion: nueva cita sin cupo fijo (el usuario elige asesor/fecha/hora), prefijada con el cliente y servicios.
+    // Atencion libre desde el pipeline (tarjeta de Asesoria de imagen): cliente prefijado, el usuario elige cupo.
+    public async Task OpenForClientAsync(string name, string phone, Guid? clientId)
+    {
+        var first = Resources.FirstOrDefault();
+        _appointmentId = null; _reschedule = false; _freeSlot = true; _rescheduledFromId = null;
+        _resourceId = first?.Id ?? Guid.Empty; _date = DateOnly.FromDateTime(DateTime.Today); _startTime = new TimeOnly(10, 0);
+        _clientName = name ?? ""; _clientPhone = phone ?? ""; _clientId = clientId;
+        _status = AppointmentStatus.Scheduled; _punctuality = Punctuality.Unknown; _notes = null;
+        _chosen = new(); _chain = new(); _suggestions = new(); _error = null;
+        _slotLabel = string.IsNullOrWhiteSpace(name) ? "Nueva atencion" : $"Atencion de {name}";
+        await LoadFieldsAsync(null);
+        _options = _resourceId == Guid.Empty ? new() : (await Agenda.GetServiceOptionsAsync(_resourceId)).ToList();
+        _svcToAdd = _options.FirstOrDefault()?.Id ?? Guid.Empty;
+        _chainResource = first?.Id ?? Guid.Empty;
+        _visible = true;
+        StateHasChanged();
+    }
+
     public async Task OpenForRescheduleAsync(RescheduleItemDto item)
     {
-        _appointmentId = null; _reschedule = true; _rescheduledFromId = item.AppointmentId;
+        _appointmentId = null; _reschedule = true; _freeSlot = false; _rescheduledFromId = item.AppointmentId;
         _resourceId = item.ResourceId; _date = item.Date; _startTime = item.StartTime;
         _clientName = item.ClientName ?? ""; _clientPhone = item.ClientPhone ?? ""; _clientId = item.ClientId;
         _status = AppointmentStatus.Scheduled; _punctuality = Punctuality.Unknown; _notes = null;
         _chosen = item.ServiceIds.ToList(); _chain = new(); _suggestions = new(); _error = null;
         _slotLabel = $"Reprogramar cita de {item.ClientName}";
+        await LoadFieldsAsync(null);
         _options = (await Agenda.GetServiceOptionsAsync(_resourceId)).ToList();
         _svcToAdd = _options.FirstOrDefault()?.Id ?? Guid.Empty;
         _chainResource = Resources.FirstOrDefault()?.Id ?? Guid.Empty;
@@ -284,7 +319,8 @@
         {
             var req = new BookingRequest(_appointmentId, _resourceId, _date, _startTime, _clientName, _clientPhone, _clientId,
                 _chosen.ToList(), _status, _punctuality, _notes,
-                _appointmentId is null ? _chain.ToList() : Array.Empty<BookingChainStep>(), Array.Empty<BookingChatLine>(), _rescheduledFromId);
+                _appointmentId is null ? _chain.ToList() : Array.Empty<BookingChainStep>(), Array.Empty<BookingChatLine>(), _rescheduledFromId,
+                new Dictionary<string, string?>(_fieldValues));
             var res = await Agenda.SaveBookingAsync(req, await ActorAsync());
             if (!res.Success) { _error = res.Error ?? "No se pudo guardar."; return; }
             _visible = false;
@@ -314,5 +350,23 @@
         return Guid.TryParse(st.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
     }
 
-    private string PunctClass(Punctuality p) => "btn btn-sm " + (_punctuality == p ? "btn-primary" : "btn-outline-secondary");
+    private async Task LoadFieldsAsync(IReadOnlyDictionary<string, string?>? existing)
+    {
+        _apptFields = (await Fields.ListAsync(SalonFieldScope.Appointment)).ToList();
+        _fieldValues = existing is null ? new() : new Dictionary<string, string?>(existing);
+    }
+
+    // Color del boton de llegada: gris si no esta seleccionado; el color del estado cuando se marca.
+    private string PunctStyle(Punctuality p)
+    {
+        if (_punctuality != p) { return "border:1px solid var(--border);background:var(--card);color:var(--muted-foreground);"; }
+        var c = p switch
+        {
+            Punctuality.Early => "#22c55e",
+            Punctuality.OnTime => "#3b82f6",
+            Punctuality.Late => "#f97316",
+            _ => "#9ca3af"
+        };
+        return $"background:{c};color:#fff;border:1px solid {c};";
+    }
 }

@@ -15,6 +15,10 @@
 @inject IJSRuntime JS
 @inject CubotNails.Application.Common.IQuotePdfRenderer PdfRenderer
 @inject CubotNails.Application.Tenancy.IQuoteTemplateService QuoteTplSvc
+@inject CubotNails.Application.Tenancy.IBusinessUnitService BizUnitSvc
+@inject CubotNails.Application.Tenancy.IClientService ClientSvc
+@inject CubotNails.Application.Tenancy.IResourceService ResourcesSvc
+@inject CubotNails.Application.Tenancy.ISalonFieldService SalonFieldsSvc
 @using Microsoft.AspNetCore.SignalR.Client
 
 <PageTitle>Pipeline - CUBOT.nails</PageTitle>
@@ -34,6 +38,7 @@
         @if (_canManage)
         {
             <button class="btn btn-outline-secondary" @onclick="OpenConfig">Configurar embudo</button>
+            <button class="btn btn-outline-secondary" @onclick="OpenUnits">Unidades de negocio</button>
         }
         <button class="btn btn-outline-secondary" @onclick="OpenHistoryAsync">Historial</button>
         <button class="btn btn-primary" @onclick="() => OpenNewLead(null)" disabled="@(_stages.Count == 0)">+ Nuevo lead</button>
@@ -130,6 +135,20 @@ else
                     }
                 </div>
             </div>
+            @if (_businessUnits.Count > 0)
+            {
+                <div class="pl-filt-group">
+                    <div class="pl-filt-lbl">Unidad de negocio</div>
+                    <div class="pl-chips">
+                        @foreach (var bu in _businessUnits)
+                        {
+                            <button class="pl-fchip @(_filterUnits.Contains(bu.Id) ? "on" : "")" @onclick="() => ToggleUnit(bu.Id)">
+                                <span class="dot" style="background:@bu.Color"></span>@bu.Name
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
             @if (DistinctDestinations().Count > 0)
             {
                 <div class="pl-filt-group">
@@ -241,6 +260,7 @@ else
                         {
                             var pend = PendingFor(lead);
                             <div class="@CardCss(lead, pend)" draggable="true" data-lead-id="@lead.Id"
+                                 style="@CardStyle(lead)"
                                  @onclick="() => OpenLeadAsync(lead.Id)">
                                 <div class="kb-top">
                                     <span class="kb-time">
@@ -267,6 +287,13 @@ else
                                 </div>
 
                                 <div class="nm">@lead.ContactName</div>
+
+                                @if (UnitOf(lead) is { } bu)
+                                {
+                                    <div style="display:inline-flex;align-items:center;gap:5px;margin:0 0 7px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;background:@(bu.Color)22;color:@bu.Color;">
+                                        <span style="width:7px;height:7px;border-radius:50%;background:@bu.Color;"></span>@bu.Name
+                                    </div>
+                                }
 
                                 @if (pend is { } pc)
                                 {
@@ -370,14 +397,26 @@ else
                         </select>
                     </div>
                 </div>
-                <div class="field">
-                    <label class="form-label">Etapa inicial</label>
-                    <select class="form-control" @bind="_nl.StageId">
-                        @foreach (var s in _stages)
-                        {
-                            <option value="@s.Id">@s.Name</option>
-                        }
-                    </select>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="form-label">Etapa inicial</label>
+                        <select class="form-control" @bind="_nl.StageId">
+                            @foreach (var s in _stages)
+                            {
+                                <option value="@s.Id">@s.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label class="form-label">Unidad de negocio</label>
+                        <select class="form-control" value="@(_nl.BusinessUnitId?.ToString() ?? "")" @onchange="e => _nl.BusinessUnitId = ParseGuid(e.Value?.ToString())">
+                            <option value="">Sin unidad</option>
+                            @foreach (var bu in _businessUnits)
+                            {
+                                <option value="@bu.Id">@bu.Name</option>
+                            }
+                        </select>
+                    </div>
                 </div>
                 @if (_newLeadError is not null)
                 {
@@ -387,6 +426,71 @@ else
             <div class="modal-foot">
                 <button class="btn btn-outline-secondary" @onclick="() => _newLeadOpen = false">Cancelar</button>
                 <button class="btn btn-primary" @onclick="SaveNewLeadAsync" disabled="@_busy">Crear lead</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* El modal de "Asesoria de imagen" reutiliza el BookingModal del salon (ver al final del archivo). *@
+
+@* ===== Modal: unidades de negocio ===== *@
+@if (_unitsOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-dialog">
+            <div class="modal-head">
+                <h3>Unidades de negocio</h3>
+                <button class="modal-close" @onclick="() => _unitsOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small" style="margin-top:0;">Canales del cliente. El color clasifica las tarjetas del pipeline. El tipo "Asesoria de imagen" abre la ficha del salon al hacer clic en la tarjeta.</p>
+                <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:14px;">
+                    @foreach (var u in _businessUnits)
+                    {
+                        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);">
+                            <span style="width:14px;height:14px;border-radius:4px;background:@u.Color;flex:0 0 auto;"></span>
+                            <span style="font-weight:600;flex:1 1 auto;@(u.IsActive ? "" : "opacity:.5;text-decoration:line-through;")">@u.Name</span>
+                            <span class="text-muted" style="font-size:11px;">@(u.ModalKind == CubotNails.Domain.Enums.BusinessUnitModalKind.ImageAdvisory ? "Asesoria de imagen" : "Generico")</span>
+                            <button class="pl-link" @onclick="() => EditUnit(u)">Editar</button>
+                            <button class="pl-link" @onclick="() => ToggleUnitActiveAsync(u)">@(u.IsActive ? "Ocultar" : "Activar")</button>
+                            <button class="pl-link" style="color:#C7398B;" @onclick="() => DeleteUnitAsync(u)">Eliminar</button>
+                        </div>
+                    }
+                    @if (_businessUnits.Count == 0)
+                    {
+                        <div class="text-muted small" style="padding:10px;">No hay unidades configuradas.</div>
+                    }
+                </div>
+                <div class="pl-stagegroup-title" style="margin-bottom:8px;">@(_editingUnitId is null ? "Nueva unidad" : "Editar unidad")</div>
+                <div class="field-row">
+                    <div class="field" style="flex:2 1 auto;">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-control" @bind="_uf.Name" autocomplete="off" />
+                    </div>
+                    <div class="field" style="flex:0 0 90px;">
+                        <label class="form-label">Color</label>
+                        <input class="form-control" type="color" @bind="_uf.Color" style="padding:2px;height:38px;" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="form-label">Tipo de modal al abrir la tarjeta</label>
+                    <select class="form-control" @bind="_uf.ModalKind">
+                        <option value="Generic">Generico (ficha del lead)</option>
+                        <option value="ImageAdvisory">Asesoria de imagen (ficha del salon)</option>
+                    </select>
+                </div>
+                @if (_unitsError is not null)
+                {
+                    <div class="text-danger small">@_unitsError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                @if (_editingUnitId is not null)
+                {
+                    <button class="btn btn-outline-secondary" @onclick="CancelUnitEdit">Cancelar edicion</button>
+                }
+                <button class="btn btn-outline-secondary" @onclick="() => _unitsOpen = false">Cerrar</button>
+                <button class="btn btn-primary" @onclick="SaveUnitAsync">@(_editingUnitId is null ? "Agregar" : "Guardar")</button>
             </div>
         </div>
     </div>
@@ -501,6 +605,16 @@ else
                             {
                                 <input class="form-control" value="@AssignedLabel()" disabled />
                             }
+                        </div>
+                        <div class="pl-field col2">
+                            <label class="form-label">Unidad de negocio</label>
+                            <select class="form-control" value="@(_el.BusinessUnitId?.ToString() ?? "")" @onchange="OnEditUnitChanged">
+                                <option value="">Sin unidad</option>
+                                @foreach (var bu in _businessUnits)
+                                {
+                                    <option value="@bu.Id">@bu.Name</option>
+                                }
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -1261,6 +1375,26 @@ else
                 <button class="modal-close" @onclick="() => _configOpen = false">&times;</button>
             </div>
             <div class="modal-body">
+                <div class="field">
+                    <label class="form-label">Unidad de negocio a configurar</label>
+                    <select class="form-control" value="@(_cfgUnitId?.ToString() ?? "")" @onchange="e => _cfgUnitId = ParseGuid(e.Value?.ToString())">
+                        @foreach (var bu in _businessUnits)
+                        {
+                            <option value="@bu.Id">@bu.Name</option>
+                        }
+                    </select>
+                    <div class="text-muted" style="font-size:11px;margin-top:4px;">
+                        @if (CfgUnitIsImage)
+                        {
+                            <text>Esta unidad abre el modal de atencion del salon. Sus campos se comparten con Dia del salon, Asignacion y Vista semanal.</text>
+                        }
+                        else
+                        {
+                            <text>Los campos de las unidades genericas se muestran en el modal del lead, organizados por etapa.</text>
+                        }
+                    </div>
+                </div>
+                <hr style="margin:14px 0;border-color:var(--border);" />
                 <div class="pl-stagegroup-title">Etapas</div>
                 @for (var i = 0; i < _stages.Count; i++)
                 {
@@ -1296,6 +1430,14 @@ else
 
                 <hr style="margin:18px 0;border-color:var(--border);" />
 
+                @if (CfgUnitIsImage)
+                {
+                    <div class="pl-stagegroup-title">Campos del modal de atencion (salon)</div>
+                    <p class="text-muted" style="font-size:12px;">Esta unidad usa el modal de atencion del salon. Configura aqui sus campos (datos de la cita); aplican tambien a Dia del salon, Asignacion y Vista semanal.</p>
+                    <button class="btn btn-primary" @onclick="() => _apptCfgOpen = true">Configurar campos de atencion</button>
+                }
+                else
+                {
                 <div class="pl-stagegroup-title">Campos por etapa</div>
                 <div class="field">
                     <label class="form-label">Etapa</label>
@@ -1306,12 +1448,8 @@ else
                         }
                     </select>
                 </div>
-                @{
-                    var cfgFields = _fields.Where(f => f.StageId == _cfgStageId).OrderBy(f => f.SortOrder).ToList();
-                }
-                @{
-                    var numericFields = cfgFields.Where(x => x.FieldType is PipelineFieldType.Number && (_editingFieldId is null || x.Id != _editingFieldId)).ToList();
-                }
+                var cfgFields = _fields.Where(f => f.StageId == _cfgStageId).OrderBy(f => f.SortOrder).ToList();
+                var numericFields = cfgFields.Where(x => x.FieldType is PipelineFieldType.Number && (_editingFieldId is null || x.Id != _editingFieldId)).ToList();
                 @for (int fi = 0; fi < cfgFields.Count; fi++)
                 {
                     var f = cfgFields[fi];
@@ -1452,6 +1590,7 @@ else
                         }
                     </div>
                 </div>
+                }
             </div>
             <div class="modal-foot">
                 <button class="btn btn-outline-secondary" @onclick="() => _configOpen = false">Listo</button>
@@ -1459,6 +1598,13 @@ else
         </div>
     </div>
 }
+
+@* Modal de atencion del salon (compartido): lo abre la tarjeta de "Asesoria de imagen". *@
+<BookingModal @ref="_bookingModal" Resources="_resources" OnSaved="OnBookingSavedAsync" />
+
+@* Configurador de campos del modal de atencion del salon (scope Cita), invocado desde la config del embudo
+   cuando la unidad seleccionada es de tipo Asesoria de imagen. Afecta Dia del salon / Asignacion / Vista semanal. *@
+<SalonFieldsConfig Show="_apptCfgOpen" Scopes="_apptScopes" ActorUserId="_apptCfgActor" OnClose="() => _apptCfgOpen = false" />
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -1481,7 +1627,28 @@ else
     private readonly HashSet<Guid> _filterStages = new();
     private readonly HashSet<string> _filterValue = new();
     private readonly HashSet<string> _filterDestinos = new();
+    private readonly HashSet<Guid> _filterUnits = new();
     private bool _onlyUnanswered;
+
+    // Unidades de negocio (canales del cliente: B2B, detal, cursos, asesoria de imagen).
+    private List<BusinessUnitDto> _businessUnits = new();
+    private bool _unitsOpen;
+    private string? _unitsError;
+    private Guid? _editingUnitId;
+    private UnitForm _uf = new();
+
+    // Recursos del salon + modal de atencion compartido (BookingModal). La tarjeta de "Asesoria de imagen"
+    // abre el MISMO modal que Dia del salon / Asignacion / Vista semanal.
+    private List<ResourceDto> _resources = new();
+    private BookingModal _bookingModal = default!;
+
+    // Config del embudo: unidad de negocio cuyos campos se estan configurando + configurador de campos del salon.
+    private Guid? _cfgUnitId;
+    private bool _apptCfgOpen;
+    private Guid _apptCfgActor;
+    private readonly SalonFieldScope[] _apptScopes = { SalonFieldScope.Appointment };
+    private bool CfgUnitIsImage => _cfgUnitId is Guid id
+        && _businessUnits.FirstOrDefault(u => u.Id == id)?.ModalKind == CubotNails.Domain.Enums.BusinessUnitModalKind.ImageAdvisory;
 
     private DotNetObjectReference<Pipeline>? _selfRef;
 
@@ -1852,7 +2019,9 @@ else
             _tenantId = state.User.FindFirst("tenant_id")?.Value;
         }
         var actor = await ActorAsync();
+        _apptCfgActor = actor;
         await PipelineSvc.EnsureDefaultsAsync(actor);
+        await BizUnitSvc.EnsureDefaultsAsync(actor);
         await ReloadAsync();
         _loading = false;
         await EnsureHubAsync();
@@ -1862,6 +2031,12 @@ else
     {
         _stages = (await PipelineSvc.ListStagesAsync()).ToList();
         _fields = (await PipelineSvc.ListFieldsAsync()).ToList();
+        _businessUnits = (await BizUnitSvc.ListAsync()).ToList();
+        _resources = (await ResourcesSvc.ListAsync()).ToList();
+        if (_cfgUnitId is null || _businessUnits.All(u => u.Id != _cfgUnitId))
+        {
+            _cfgUnitId = _businessUnits.FirstOrDefault()?.Id;
+        }
         _leads = (await LeadsSvc.ListAsync()).ToList();
         _team = (await UsersSvc.ListAsync()).ToList();
         _userEmails = _team.ToDictionary(u => u.Id, u => u.Email);
@@ -1995,7 +2170,7 @@ else
         {
             var actor = await ActorAsync();
             var req = new CreateLeadRequest(_nl.ContactName, _nl.ContactPhone, _nl.Destination,
-                _nl.EstimatedValue, _nl.Currency, _nl.StageId == Guid.Empty ? null : _nl.StageId);
+                _nl.EstimatedValue, _nl.Currency, _nl.StageId == Guid.Empty ? null : _nl.StageId, _nl.BusinessUnitId);
             var created = await LeadsSvc.CreateAsync(req, actor);
             if (created is null)
             {
@@ -2230,6 +2405,14 @@ else
     // ===== Detalle de lead =====
     private async Task OpenLeadAsync(Guid leadId)
     {
+        // Routing por unidad de negocio: la asesoria de imagen abre el MISMO modal de atencion del salon.
+        var routeLead = _leads.FirstOrDefault(l => l.Id == leadId);
+        if (UnitOf(routeLead) is { ModalKind: CubotNails.Domain.Enums.BusinessUnitModalKind.ImageAdvisory })
+        {
+            await OpenSalonBookingAsync(routeLead!);
+            return;
+        }
+
         _leadError = null;
         var detail = await LeadsSvc.GetAsync(leadId);
         if (detail is null) { return; }
@@ -2251,7 +2434,8 @@ else
             ContactPhone = detail.Lead.ContactPhone,
             Destination = detail.Lead.Destination,
             EstimatedValue = detail.Lead.EstimatedValue,
-            Currency = detail.Lead.Currency
+            Currency = detail.Lead.Currency,
+            BusinessUnitId = detail.Lead.BusinessUnitId
         };
         _editValues = new Dictionary<string, string?>();
         _multiValues = new Dictionary<string, List<string?>>();
@@ -2514,7 +2698,7 @@ else
                 values[tf.FieldKey] = total.ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
             var req = new UpdateLeadRequest(_el.ContactName, _el.ContactPhone, _el.Destination,
-                _el.EstimatedValue, _el.Currency, values);
+                _el.EstimatedValue, _el.Currency, values, _el.BusinessUnitId);
             var updated = await LeadsSvc.UpdateAsync(_editLead.Id, req, actor);
             if (updated is not null)
             {
@@ -3131,9 +3315,98 @@ else
         return c;
     }
 
+    // ===== Unidades de negocio =====
+    private BusinessUnitDto? UnitOf(LeadDto? l) =>
+        l?.BusinessUnitId is Guid id ? _businessUnits.FirstOrDefault(u => u.Id == id) : null;
+
+    // Pinta un borde izquierdo con el color de la unidad de negocio del lead.
+    private string CardStyle(LeadDto l) =>
+        UnitOf(l) is { } bu ? $"border-left:4px solid {bu.Color};" : string.Empty;
+
+    private static Guid? ParseGuid(string? s) => Guid.TryParse(s, out var g) ? g : (Guid?)null;
+
+    private void OnEditUnitChanged(ChangeEventArgs e)
+    {
+        _el.BusinessUnitId = ParseGuid(e.Value?.ToString());
+        _leadDirty = true;
+    }
+
+    private void ToggleUnit(Guid id) { if (!_filterUnits.Add(id)) { _filterUnits.Remove(id); } }
+
+    // ===== Atencion de salon (asesoria de imagen) =====
+    // Reutiliza el MISMO modal del salon (BookingModal). Resuelve/crea el cliente por telefono y abre
+    // el modal de atencion prefijado con ese cliente para que el asesor elija cupo, servicios y datos.
+    private async Task OpenSalonBookingAsync(LeadDto lead)
+    {
+        var actor = await ActorAsync();
+        var clientId = await ClientSvc.EnsureByPhoneAsync(lead.ContactName, lead.ContactPhone, actor);
+        await _bookingModal.OpenForClientAsync(lead.ContactName, lead.ContactPhone ?? string.Empty, clientId);
+    }
+
+    private async Task OnBookingSavedAsync()
+    {
+        _pending = await ChatSvc.GetUnansweredByPhoneAsync();
+        StateHasChanged();
+    }
+
+    // ===== Configuracion de unidades de negocio =====
+    private void OpenUnits()
+    {
+        _unitsError = null;
+        _editingUnitId = null;
+        _uf = new UnitForm();
+        _unitsOpen = true;
+    }
+
+    private void EditUnit(BusinessUnitDto u)
+    {
+        _editingUnitId = u.Id;
+        _uf = new UnitForm { Name = u.Name, Color = u.Color, ModalKind = u.ModalKind };
+        _unitsError = null;
+    }
+
+    private void CancelUnitEdit()
+    {
+        _editingUnitId = null;
+        _uf = new UnitForm();
+        _unitsError = null;
+    }
+
+    private async Task SaveUnitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_uf.Name))
+        {
+            _unitsError = "El nombre es obligatorio.";
+            return;
+        }
+        var actor = await ActorAsync();
+        var req = new SaveBusinessUnitRequest(_uf.Name.Trim(),
+            string.IsNullOrWhiteSpace(_uf.Color) ? "#A03DC9" : _uf.Color.Trim(), _uf.ModalKind);
+        if (_editingUnitId is Guid id) { await BizUnitSvc.UpdateAsync(id, req, actor); }
+        else { await BizUnitSvc.CreateAsync(req, actor); }
+        _businessUnits = (await BizUnitSvc.ListAsync()).ToList();
+        CancelUnitEdit();
+    }
+
+    private async Task ToggleUnitActiveAsync(BusinessUnitDto u)
+    {
+        var actor = await ActorAsync();
+        await BizUnitSvc.SetActiveAsync(u.Id, !u.IsActive, actor);
+        _businessUnits = (await BizUnitSvc.ListAsync()).ToList();
+    }
+
+    private async Task DeleteUnitAsync(BusinessUnitDto u)
+    {
+        var actor = await ActorAsync();
+        await BizUnitSvc.DeleteAsync(u.Id, actor);
+        _businessUnits = (await BizUnitSvc.ListAsync()).ToList();
+        _leads = (await LeadsSvc.ListAsync()).ToList();
+        if (_editingUnitId == u.Id) { CancelUnitEdit(); }
+    }
+
     // ===== Busqueda, orden y filtros =====
-    private bool FiltersActive => _filterAsesores.Count > 0 || _filterStages.Count > 0 || _filterValue.Count > 0 || _filterDestinos.Count > 0 || _onlyUnanswered;
-    private int ActiveFilterCount => _filterAsesores.Count + _filterStages.Count + _filterValue.Count + _filterDestinos.Count + (_onlyUnanswered ? 1 : 0);
+    private bool FiltersActive => _filterAsesores.Count > 0 || _filterStages.Count > 0 || _filterValue.Count > 0 || _filterDestinos.Count > 0 || _filterUnits.Count > 0 || _onlyUnanswered;
+    private int ActiveFilterCount => _filterAsesores.Count + _filterStages.Count + _filterValue.Count + _filterDestinos.Count + _filterUnits.Count + (_onlyUnanswered ? 1 : 0);
 
     private void ClearFilters()
     {
@@ -3141,6 +3414,7 @@ else
         _filterStages.Clear();
         _filterValue.Clear();
         _filterDestinos.Clear();
+        _filterUnits.Clear();
         _onlyUnanswered = false;
     }
     private void ToggleAsesor(Guid id) { if (!_filterAsesores.Add(id)) { _filterAsesores.Remove(id); } }
@@ -3177,6 +3451,10 @@ else
         if (_filterDestinos.Count > 0)
         {
             q = q.Where(l => l.Destination is not null && _filterDestinos.Contains(l.Destination.Trim()));
+        }
+        if (_filterUnits.Count > 0)
+        {
+            q = q.Where(l => l.BusinessUnitId is Guid bu && _filterUnits.Contains(bu));
         }
         if (_onlyUnanswered)
         {
@@ -3297,6 +3575,7 @@ else
         public decimal? EstimatedValue { get; set; }
         public string? Currency { get; set; } = "COP";
         public Guid StageId { get; set; }
+        public Guid? BusinessUnitId { get; set; }
     }
 
     private sealed class EditLeadForm
@@ -3306,6 +3585,14 @@ else
         public string? Destination { get; set; }
         public decimal? EstimatedValue { get; set; }
         public string? Currency { get; set; }
+        public Guid? BusinessUnitId { get; set; }
+    }
+
+    private sealed class UnitForm
+    {
+        public string Name { get; set; } = "";
+        public string Color { get; set; } = "#A03DC9";
+        public CubotNails.Domain.Enums.BusinessUnitModalKind ModalKind { get; set; } = CubotNails.Domain.Enums.BusinessUnitModalKind.Generic;
     }
 
     private sealed class NewFieldForm

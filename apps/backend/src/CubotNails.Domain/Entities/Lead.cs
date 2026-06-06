@@ -18,6 +18,10 @@ public class Lead : TenantEntity
     public PipelineStage? Stage { get; set; }
 
     public Guid? AssignedToTenantUserId { get; set; }
+
+    /// <summary>Unidad / canal de negocio del lead (B2B, detal, cursos, asesoria de imagen). Opcional.</summary>
+    public Guid? BusinessUnitId { get; set; }
+
     public LeadStatus Status { get; set; } = LeadStatus.Open;
     public string? LossReason { get; set; }
     public DateTimeOffset StageChangedAt { get; set; }

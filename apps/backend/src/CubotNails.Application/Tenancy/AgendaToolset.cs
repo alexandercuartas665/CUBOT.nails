@@ -15,17 +15,11 @@ public sealed record AgendaToolResult(string Json, bool BookingCreated);
 /// IAgendaService.SaveBookingAsync, asi que comparte el ANTI-OVERBOOKING (indice unico + captura de
 /// violacion): la IA NO tiene atajos que salten esa defensa.
 /// </summary>
-public interface IAgendaToolset
+public interface IAgendaToolset : IAgentToolset
 {
-    /// <summary>Definiciones (nombre + JSON Schema) que se envian al proveedor de IA.</summary>
-    IReadOnlyList<AiToolSpec> GetSpecs();
-
-    /// <summary>
-    /// Ejecuta una herramienta por nombre con los argumentos (JSON) que pidio el modelo. autonomous=true
-    /// permite reservar/cancelar de verdad; en false (modo sugerencia) esas dos herramientas no escriben
-    /// en la agenda: registran la solicitud como PENDIENTE para que un asesor la confirme.
-    /// </summary>
-    Task<AgendaToolResult> ExecuteAsync(string toolName, string argumentsJson, Guid actorUserId, bool autonomous, CancellationToken cancellationToken = default);
+    // GetSpecs y ExecuteAsync se heredan de IAgentToolset.
+    // autonomous=true permite reservar/cancelar de verdad; en false (modo sugerencia) reservar_cita y
+    // cancelar_cita no escriben en la agenda: registran la solicitud como PENDIENTE para que un asesor la confirme.
 }
 
 public sealed class AgendaToolset : IAgendaToolset
@@ -52,6 +46,9 @@ public sealed class AgendaToolset : IAgendaToolset
     {
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
+
+    public string GroupKey => "agenda";
+    public string GroupLabel => "Agenda y citas";
 
     public IReadOnlyList<AiToolSpec> GetSpecs() => new[]
     {

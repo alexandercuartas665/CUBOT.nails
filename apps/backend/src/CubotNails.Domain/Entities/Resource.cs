@@ -19,4 +19,7 @@ public class Resource : TenantEntity
 
     /// <summary>Si el asesor tiene login propio (TenantUser con rol Professional).</summary>
     public Guid? LinkedTenantUserId { get; set; }
+
+    /// <summary>Sede (local) donde atiende este asesor/estacion. Opcional.</summary>
+    public Guid? SedeId { get; set; }
 }

@@ -101,9 +101,17 @@ public sealed class AgentConversationService : IAgentConversationService
 
         if (result.Attachments is { Count: > 0 })
         {
+            // Los adjuntos que no se pudieron entregar se registran en la bitacora (antes fallaban en silencio).
+            var failures = new List<string>();
             foreach (var a in result.Attachments)
             {
-                await SendAttachmentAsync(conversationId, lineId, a, actor, cancellationToken);
+                var err = await SendAttachmentAsync(conversationId, lineId, a, actor, cancellationToken);
+                if (err is not null) { failures.Add(err); }
+            }
+            if (failures.Count > 0)
+            {
+                await LogAsync(conv.TenantId, conversationId, agent.Id, AiAgentRunLogKind.Error,
+                    "No se pudieron enviar algunos adjuntos", string.Join("\n", failures), null, cancellationToken);
             }
         }
 
@@ -111,13 +119,14 @@ public sealed class AgentConversationService : IAgentConversationService
             "Respuesta enviada", result.Text, AttachmentSummary(result.Attachments), cancellationToken);
     }
 
-    private async Task SendAttachmentAsync(Guid conversationId, Guid lineId, AiChatAttachment a, Guid actor, CancellationToken ct)
+    // Devuelve null si el adjunto se envio bien, o un mensaje de error para la bitacora si fallo.
+    private async Task<string?> SendAttachmentAsync(Guid conversationId, Guid lineId, AiChatAttachment a, Guid actor, CancellationToken ct)
     {
         switch (a.ResourceType)
         {
             case AgentResourceType.Text:
                 if (!string.IsNullOrWhiteSpace(a.Detail)) { await _chat.SendViaLineAsync(conversationId, lineId, a.Detail!, actor, ct); }
-                break;
+                return null;
             case AgentResourceType.Location:
                 var parts = (a.Detail ?? "").Split(',');
                 if (parts.Length == 2
@@ -125,23 +134,38 @@ public sealed class AgentConversationService : IAgentConversationService
                     && double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lng))
                 {
                     await _chat.SendLocationViaLineAsync(conversationId, lineId, lat, lng, a.Name, actor, ct);
+                    return null;
                 }
-                break;
+                return $"El recurso de ubicacion \"{a.Name}\" no tiene coordenadas validas (esperado \"lat,lng\").";
             default:
                 var b64 = await _assets.ReadBase64Async(a.FileUrl, ct);
-                if (!string.IsNullOrEmpty(b64))
+                if (string.IsNullOrEmpty(b64))
                 {
-                    var mt = a.ResourceType switch
-                    {
-                        AgentResourceType.Image => MessageMediaType.Image,
-                        AgentResourceType.Video => MessageMediaType.Video,
-                        AgentResourceType.Audio => MessageMediaType.Audio,
-                        _ => MessageMediaType.Document
-                    };
-                    await _chat.SendMediaViaLineAsync(conversationId, lineId, mt, b64!, a.FileUrl ?? "", null, a.FileName, a.Detail, actor, ct);
+                    return $"El recurso \"{a.Name}\" no se pudo leer (archivo ausente o ilegible: {a.FileUrl ?? "sin ruta"}).";
                 }
-                break;
+                var mt = a.ResourceType switch
+                {
+                    AgentResourceType.Image => MessageMediaType.Image,
+                    AgentResourceType.Video => MessageMediaType.Video,
+                    AgentResourceType.Audio => MessageMediaType.Audio,
+                    _ => MessageMediaType.Document
+                };
+                var send = await _chat.SendMediaViaLineAsync(conversationId, lineId, mt, b64!, a.FileUrl ?? "", null, a.FileName, a.Detail, actor, ct);
+                if (send.Ok) { return null; }
+                // Pista comun: WhatsApp no admite SVG/GIF como imagen; solo JPEG o PNG.
+                var hint = mt == MessageMediaType.Image && IsUnsupportedImage(a.FileUrl)
+                    ? " WhatsApp no admite imagenes SVG/GIF; usa JPEG o PNG."
+                    : string.Empty;
+                return $"Evolution rechazo el recurso \"{a.Name}\" ({mt}). Detalle: {send.Error}.{hint}";
         }
+    }
+
+    // Formatos que WhatsApp no muestra como imagen (Baileys falla al procesarlos).
+    private static bool IsUnsupportedImage(string? fileUrl)
+    {
+        if (string.IsNullOrWhiteSpace(fileUrl)) { return false; }
+        var ext = System.IO.Path.GetExtension(fileUrl).ToLowerInvariant();
+        return ext is ".svg" or ".gif" or ".webp" or ".bmp" or ".tiff" or ".tif";
     }
 
     private async Task LogAsync(Guid tenantId, Guid conversationId, Guid agentId, AiAgentRunLogKind kind, string title, string? content, string? response, CancellationToken ct)
