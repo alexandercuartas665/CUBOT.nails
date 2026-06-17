@@ -25,6 +25,7 @@ public interface IApplicationDbContext
     DbSet<FollowUpTask> FollowUpTasks { get; }
     DbSet<Conversation> Conversations { get; }
     DbSet<Message> Messages { get; }
+    DbSet<TenantBlockedNumber> TenantBlockedNumbers { get; }
     DbSet<MessageTemplate> MessageTemplates { get; }
     DbSet<QuoteTemplate> QuoteTemplates { get; }
     DbSet<TemplateAsset> TemplateAssets { get; }

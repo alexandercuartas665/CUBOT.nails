@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<Tenancy.ITenantApiService, Tenancy.TenantApiService>();
         services.AddScoped<Tenancy.IFollowUpTaskService, Tenancy.FollowUpTaskService>();
         services.AddScoped<Tenancy.IChatService, Tenancy.ChatService>();
+        services.AddScoped<Tenancy.IBlockedNumberService, Tenancy.BlockedNumberService>();
         services.AddScoped<Tenancy.IMessageTemplateService, Tenancy.MessageTemplateService>();
         services.AddScoped<Tenancy.IQuoteTemplateService, Tenancy.QuoteTemplateService>();
         services.AddScoped<Tenancy.ITemplateAssetService, Tenancy.TemplateAssetService>();

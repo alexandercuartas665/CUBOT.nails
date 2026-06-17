@@ -128,6 +128,31 @@ public sealed class ChatService : IChatService
             return new ChatSendResult(false, null, "Conversacion no encontrada.");
         }
 
+        // COMANDO DE TOMA DE CONTROL: si el asesor envia "Manejo_asesor", agregamos el numero a la lista
+        // negra (el agente deja de responderle) y NO enviamos el comando al cliente; dejamos una nota de sistema.
+        if (AgentControlCommands.IsTakeControl(body))
+        {
+            await AgentControlCommands.BlockNumberForLineAsync(_db, lineId, conv.ContactPhone, cancellationToken);
+            var cmdNow = _timeProvider.GetUtcNow();
+            var note = new Message
+            {
+                TenantId = conv.TenantId,
+                ConversationId = conv.Id,
+                Direction = MessageDirection.Outbound,
+                Body = "Tomaste el control de esta conversacion. El asistente ya no respondera a este numero.",
+                MessageType = "text",
+                SentByName = "Sistema",
+                SentAt = cmdNow
+            };
+            _db.Messages.Add(note);
+            conv.LastMessageAt = cmdNow;
+            conv.WhatsAppLineId = lineId;
+            await _db.SaveChangesAsync(cancellationToken);
+            var noteDto = new MessageDto(note.Id, note.ConversationId, note.Direction, note.Body, note.MessageType, note.SentAt, note.MediaType, note.MediaUrl, note.MediaMimeType, note.SentByName);
+            try { await _broadcaster.MessageAddedAsync(conv.TenantId, conv.Id, noteDto, cancellationToken); } catch { /* best-effort */ }
+            return new ChatSendResult(true, noteDto, null);
+        }
+
         // Envio real por la linea elegida (Evolution).
         var send = await _connector.SendTestAsync(lineId, conv.ContactPhone, body, actorUserId, cancellationToken);
         if (!send.Ok)

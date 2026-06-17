@@ -49,6 +49,11 @@ public sealed class AgentConversationService : IAgentConversationService
         var agent = await _db.AiAgents.AsNoTracking().FirstOrDefaultAsync(a => a.Id == binding.AgentId && a.IsActive, cancellationToken);
         if (agent is null) { return; }
 
+        // LISTA NEGRA: si el numero del contacto esta bloqueado por el tenant, ningun agente lo atiende.
+        var blockedPhones = await _db.TenantBlockedNumbers.AsNoTracking()
+            .Select(b => b.Phone).ToListAsync(cancellationToken);
+        if (AgentControlCommands.IsBlocked(conv.ContactPhone, blockedPhones)) { return; }
+
         // Reconstruimos la conversacion como turnos (lo mas reciente al final).
         var messages = await _db.Messages.AsNoTracking()
             .Where(m => m.ConversationId == conversationId)

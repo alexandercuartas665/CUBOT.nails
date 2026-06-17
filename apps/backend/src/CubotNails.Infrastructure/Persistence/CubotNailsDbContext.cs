@@ -56,6 +56,7 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
     public DbSet<FollowUpTask> FollowUpTasks => Set<FollowUpTask>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<TenantBlockedNumber> TenantBlockedNumbers => Set<TenantBlockedNumber>();
     public DbSet<MessageTemplate> MessageTemplates => Set<MessageTemplate>();
     public DbSet<QuoteTemplate> QuoteTemplates => Set<QuoteTemplate>();
     public DbSet<TemplateAsset> TemplateAssets => Set<TemplateAsset>();
@@ -434,6 +435,13 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
             b.HasIndex(x => new { x.TenantId, x.ConversationId });
             // Idempotencia de ingesta: un mensaje externo no se inserta dos veces.
             b.HasIndex(x => new { x.TenantId, x.ExternalId }).IsUnique().HasFilter("external_id IS NOT NULL");
+        });
+
+        modelBuilder.Entity<TenantBlockedNumber>(b =>
+        {
+            b.Property(x => x.Phone).HasMaxLength(40).IsRequired();
+            b.Property(x => x.Note).HasMaxLength(200);
+            b.HasIndex(x => new { x.TenantId, x.Phone }).IsUnique();
         });
 
         modelBuilder.Entity<MessageTemplate>(b =>
