@@ -387,6 +387,9 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 /* Lead con mensaje del cliente sin responder */
 .kb-card.needsreply { background: oklch(0.97 0.045 50); border-color: oklch(0.72 0.16 55 / 0.55); box-shadow: var(--shadow-soft), -3px 0 0 oklch(0.7 0.17 50) inset; padding-left: 15px; }
 .kb-card.needsreply:hover { border-color: oklch(0.7 0.17 50); }
+/* Lead aun no abierto por este navegador: punto indicador + borde realzado (no compite con needsreply/stale) */
+.kb-card.unseen { border-color: oklch(0.55 0.22 285 / 0.5); }
+.kb-card.unseen .nm::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: oklch(0.55 0.22 285); vertical-align: middle; }
 .kb-badge.reply { background: oklch(0.7 0.17 50 / 0.16); color: oklch(0.5 0.16 45); }
 .kb-unread { display: inline-flex; align-items: center; gap: 5px; margin: 4px 0 2px; font-size: 11px; font-weight: 700; color: oklch(0.5 0.16 45); }
 .kb-unread svg { width: 12px; height: 12px; }

@@ -14,7 +14,8 @@ public sealed record LeadDto(
     Guid? AssignedToTenantUserId,
     DateTimeOffset StageChangedAt,
     IReadOnlyDictionary<string, string?> FieldValues,
-    Guid? BusinessUnitId = null);
+    Guid? BusinessUnitId = null,
+    DateTimeOffset CreatedAt = default);
 
 public sealed record LeadActivityDto(Guid Id, string ActivityType, string? Description, DateTimeOffset CreatedAt, string? ActorName);
 

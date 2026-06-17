@@ -416,7 +416,7 @@ public sealed class LeadService : ILeadService
     private static string PhoneDigits(string? s) => string.IsNullOrEmpty(s) ? string.Empty : new string(s.Where(char.IsDigit).ToArray());
 
     private static LeadDto Map(Lead l) =>
-        new(l.Id, l.ContactName, l.ContactPhone, l.Destination, l.EstimatedValue, l.Currency, l.StageId, l.Status, l.AssignedToTenantUserId, l.StageChangedAt, DeserializeValues(l.FieldValuesJson), l.BusinessUnitId);
+        new(l.Id, l.ContactName, l.ContactPhone, l.Destination, l.EstimatedValue, l.Currency, l.StageId, l.Status, l.AssignedToTenantUserId, l.StageChangedAt, DeserializeValues(l.FieldValuesJson), l.BusinessUnitId, l.CreatedAt);
 
     private static IReadOnlyDictionary<string, string?> DeserializeValues(string? json)
     {

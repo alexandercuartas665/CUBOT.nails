@@ -90,6 +90,8 @@ else
             <span class="pl-sort-lbl">Ordenar:</span>
             <select @bind="_sortBy">
                 <option value="time">Tiempo en columna</option>
+                <option value="recent">Mas recientes primero</option>
+                <option value="arrival">Mas antiguos primero</option>
                 <option value="name">Nombre (A-Z)</option>
                 <option value="unanswered">Sin responder primero</option>
             </select>
@@ -124,6 +126,9 @@ else
                             <span class="dot" style="background:@AseColor(TeamLabel(u))"></span>@FirstName(TeamLabel(u))
                         </button>
                     }
+                    <button class="pl-fchip @(_filterSinAsesor ? "on" : "")" @onclick="() => _filterSinAsesor = !_filterSinAsesor">
+                        <span class="dot" style="background:var(--muted-foreground);"></span>Sin asesor
+                    </button>
                 </div>
             </div>
             <div class="pl-filt-group">
@@ -1624,11 +1629,16 @@ else
     private string _sortBy = "time";
     private bool _filtersOpen;
     private readonly HashSet<Guid> _filterAsesores = new();
+    private bool _filterSinAsesor;
     private readonly HashSet<Guid> _filterStages = new();
     private readonly HashSet<string> _filterValue = new();
     private readonly HashSet<string> _filterDestinos = new();
     private readonly HashSet<Guid> _filterUnits = new();
     private bool _onlyUnanswered;
+
+    // Tarjetas "no vistas": leads que este navegador aun no abrio se resaltan. Persistido en localStorage por tenant.
+    private readonly HashSet<Guid> _seenLeadIds = new();
+    private bool _seenLoaded;
 
     // Unidades de negocio (canales del cliente: B2B, detal, cursos, asesoria de imagen).
     private List<BusinessUnitDto> _businessUnits = new();
@@ -2062,6 +2072,12 @@ else
             _selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("cubotPipeline.init", _selfRef);
         }
+        // Carga el set de "no vistos" una sola vez, ya con los leads cargados (no en el render de loading).
+        if (!_seenLoaded && !_loading)
+        {
+            await LoadSeenLeadsAsync();
+            StateHasChanged();
+        }
         if (_scrollChatPending)
         {
             _scrollChatPending = false;
@@ -2398,6 +2414,8 @@ else
         {
             "name" => all.OrderBy(l => l.ContactName, StringComparer.OrdinalIgnoreCase).ToList(),
             "unanswered" => all.OrderByDescending(l => PendingFor(l)?.UnansweredCount ?? 0).ThenBy(l => l.StageChangedAt).ToList(),
+            "recent" => all.OrderByDescending(l => l.CreatedAt).ToList(),
+            "arrival" => all.OrderBy(l => l.CreatedAt).ToList(),
             _ => all.OrderBy(l => l.StageChangedAt).ToList()
         };
     }
@@ -2405,6 +2423,7 @@ else
     // ===== Detalle de lead =====
     private async Task OpenLeadAsync(Guid leadId)
     {
+        await MarkSeenAsync(leadId);
         // Routing por unidad de negocio: la asesoria de imagen abre el MISMO modal de atencion del salon.
         var routeLead = _leads.FirstOrDefault(l => l.Id == leadId);
         if (UnitOf(routeLead) is { ModalKind: CubotNails.Domain.Enums.BusinessUnitModalKind.ImageAdvisory })
@@ -3312,7 +3331,48 @@ else
         var c = "kb-card";
         if (IsStale(l)) { c += " stale"; }
         if (pend is not null) { c += " needsreply"; }
+        if (_seenLoaded && !_seenLeadIds.Contains(l.Id)) { c += " unseen"; }
         return c;
+    }
+
+    // ===== Tarjetas no vistas (localStorage por tenant) =====
+    private string SeenKey => $"cubot.pl.seen.{_tenantId}";
+
+    private async Task LoadSeenLeadsAsync()
+    {
+        if (string.IsNullOrEmpty(_tenantId)) { _seenLoaded = true; return; }
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", SeenKey);
+            _seenLeadIds.Clear();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                // Primera visita: marca lo que ya existe como visto (no resaltar leads viejos).
+                foreach (var l in _leads) { _seenLeadIds.Add(l.Id); }
+                await PersistSeenAsync();
+            }
+            else
+            {
+                foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (Guid.TryParse(part, out var id)) { _seenLeadIds.Add(id); }
+                }
+            }
+        }
+        catch { /* localStorage no disponible: sin resaltado */ }
+        _seenLoaded = true;
+    }
+
+    private async Task PersistSeenAsync()
+    {
+        if (string.IsNullOrEmpty(_tenantId)) { return; }
+        try { await JS.InvokeVoidAsync("localStorage.setItem", SeenKey, string.Join(',', _seenLeadIds)); }
+        catch { /* best-effort */ }
+    }
+
+    private async Task MarkSeenAsync(Guid leadId)
+    {
+        if (_seenLeadIds.Add(leadId)) { await PersistSeenAsync(); }
     }
 
     // ===== Unidades de negocio =====
@@ -3405,12 +3465,13 @@ else
     }
 
     // ===== Busqueda, orden y filtros =====
-    private bool FiltersActive => _filterAsesores.Count > 0 || _filterStages.Count > 0 || _filterValue.Count > 0 || _filterDestinos.Count > 0 || _filterUnits.Count > 0 || _onlyUnanswered;
-    private int ActiveFilterCount => _filterAsesores.Count + _filterStages.Count + _filterValue.Count + _filterDestinos.Count + _filterUnits.Count + (_onlyUnanswered ? 1 : 0);
+    private bool FiltersActive => _filterAsesores.Count > 0 || _filterSinAsesor || _filterStages.Count > 0 || _filterValue.Count > 0 || _filterDestinos.Count > 0 || _filterUnits.Count > 0 || _onlyUnanswered;
+    private int ActiveFilterCount => _filterAsesores.Count + (_filterSinAsesor ? 1 : 0) + _filterStages.Count + _filterValue.Count + _filterDestinos.Count + _filterUnits.Count + (_onlyUnanswered ? 1 : 0);
 
     private void ClearFilters()
     {
         _filterAsesores.Clear();
+        _filterSinAsesor = false;
         _filterStages.Clear();
         _filterValue.Clear();
         _filterDestinos.Clear();
@@ -3444,9 +3505,11 @@ else
             q = q.Where(l => (l.ContactName?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
                           || (l.Destination?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
         }
-        if (_filterAsesores.Count > 0)
+        if (_filterAsesores.Count > 0 || _filterSinAsesor)
         {
-            q = q.Where(l => l.AssignedToTenantUserId is Guid id && _filterAsesores.Contains(id));
+            q = q.Where(l =>
+                (l.AssignedToTenantUserId is Guid id && _filterAsesores.Contains(id))
+                || (_filterSinAsesor && l.AssignedToTenantUserId is null));
         }
         if (_filterDestinos.Count > 0)
         {
@@ -3469,6 +3532,8 @@ else
         {
             "name" => q.OrderBy(l => l.ContactName, StringComparer.OrdinalIgnoreCase),
             "unanswered" => q.OrderByDescending(l => PendingFor(l)?.UnansweredCount ?? 0).ThenBy(l => l.StageChangedAt),
+            "recent" => q.OrderByDescending(l => l.CreatedAt),
+            "arrival" => q.OrderBy(l => l.CreatedAt),
             _ => q.OrderBy(l => l.StageChangedAt) // tiempo en columna: el que mas lleva, primero
         };
         return q.ToList();
