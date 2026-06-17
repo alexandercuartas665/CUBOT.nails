@@ -89,6 +89,17 @@ public sealed class WhatsAppConnectorService : IWhatsAppConnectorService
             return new LineConnectResult(false, null, "La linea no existe.");
         }
 
+        // Canal emulado (pruebas): no hay nada externo, queda conectada de inmediato.
+        if (line.Provider == WhatsAppProvider.Emulator)
+        {
+            var nowE = _timeProvider.GetUtcNow();
+            line.Status = WhatsAppLineStatus.Connected;
+            line.LastStatusAt = nowE;
+            line.LastConnectedAt = nowE;
+            await _db.SaveChangesAsync(cancellationToken);
+            return new LineConnectResult(true, null, null);
+        }
+
         // Linea Cloud (Meta): no hay QR. Validar token + phone_number_id y marcar conectada.
         if (line.Provider == WhatsAppProvider.Cloud)
         {
@@ -151,6 +162,17 @@ public sealed class WhatsAppConnectorService : IWhatsAppConnectorService
         if (line is null)
         {
             return null;
+        }
+
+        if (line.Provider == WhatsAppProvider.Emulator)
+        {
+            if (line.Status != WhatsAppLineStatus.Connected)
+            {
+                line.Status = WhatsAppLineStatus.Connected;
+                line.LastStatusAt = _timeProvider.GetUtcNow();
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            return Map(line);
         }
 
         if (line.Provider == WhatsAppProvider.Cloud)
@@ -270,7 +292,12 @@ public sealed class WhatsAppConnectorService : IWhatsAppConnectorService
         var digits = new string(phone.Where(char.IsDigit).ToArray());
 
         bool ok; string? error; string? messageId;
-        if (line.Provider == WhatsAppProvider.Cloud)
+        if (line.Provider == WhatsAppProvider.Emulator)
+        {
+            // Canal emulado: no se envia a ningun lado; exito sintetico (el mensaje queda en la conversacion/bitacora).
+            (ok, error, messageId) = (true, null, "emu-" + Guid.NewGuid().ToString("N"));
+        }
+        else if (line.Provider == WhatsAppProvider.Cloud)
         {
             var creds = CloudCreds(line);
             if (creds is null) { return new LineSendResult(false, "Faltan credenciales Cloud en la linea."); }
@@ -306,6 +333,11 @@ public sealed class WhatsAppConnectorService : IWhatsAppConnectorService
         };
         if (mt is null) { return new LineSendResult(false, "Tipo de adjunto no soportado."); }
 
+        if (line.Provider == WhatsAppProvider.Emulator)
+        {
+            return new LineSendResult(true, null, "emu-" + Guid.NewGuid().ToString("N"));
+        }
+
         if (line.Provider == WhatsAppProvider.Cloud)
         {
             var creds = CloudCreds(line);
@@ -331,6 +363,11 @@ public sealed class WhatsAppConnectorService : IWhatsAppConnectorService
     {
         var (err, line, digits) = await ReadyAsync(lineId, phone, cancellationToken);
         if (err is not null || line is null) { return new LineSendResult(false, err); }
+
+        if (line.Provider == WhatsAppProvider.Emulator)
+        {
+            return new LineSendResult(true, null, "emu-" + Guid.NewGuid().ToString("N"));
+        }
 
         if (line.Provider == WhatsAppProvider.Cloud)
         {

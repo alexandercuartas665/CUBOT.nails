@@ -208,7 +208,7 @@ else
                     {
                         <tr>
                             <td style="font-weight:600;">@l.InstanceName</td>
-                            <td><span class="badge @(l.Provider == WhatsAppProvider.Cloud ? "bg-info" : "bg-secondary")">@(l.Provider == WhatsAppProvider.Cloud ? "Cloud (Meta)" : "Evolution")</span></td>
+                            <td><span class="badge @(l.Provider switch { WhatsAppProvider.Cloud => "bg-info", WhatsAppProvider.Emulator => "bg-warning", _ => "bg-secondary" })">@(l.Provider switch { WhatsAppProvider.Cloud => "Cloud (Meta)", WhatsAppProvider.Emulator => "Emulador (pruebas)", _ => "Evolution" })</span></td>
                             <td style="font-size:12px;color:var(--muted-foreground);">@(string.IsNullOrWhiteSpace(l.PhoneNumber) ? "—" : l.PhoneNumber)</td>
                             <td><span class="badge bg-@StatusColor(l.Status)">@StatusText(l.Status)</span></td>
                             <td style="font-size:12px;color:var(--muted-foreground);">@(l.LastConnectedAt is { } c ? c.LocalDateTime.ToString("dd MMM HH:mm") : "Nunca")</td>

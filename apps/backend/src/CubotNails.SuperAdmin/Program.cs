@@ -542,7 +542,7 @@ app.MapPost("/webhooks/evolution", async (
     var parsed = CubotNails.SuperAdmin.RealTime.EvolutionWebhookParser.Parse(doc.RootElement);
     if (parsed is null) { return Results.Ok(new { status = "ignored" }); }
 
-    var result = await ingest.IngestTrustedAsync(parsed.TenantId, parsed.Payload, ct);
+    var result = await ingest.IngestTrustedAsync(parsed.TenantId, parsed.Payload, cancellationToken: ct);
     return result == CubotNails.Application.Tenancy.ChatIngestResult.Duplicate
         ? Results.Ok(new { status = "duplicate" })
         : Results.Accepted();
@@ -585,9 +585,127 @@ app.MapPost("/webhooks/meta", async (
 
         var payload = new CubotNails.Application.Tenancy.IngestMessageRequest(
             m.Phone, m.Name, m.ExternalId, m.Body, "text", m.SentAt, line.Id);
-        await ingest.IngestTrustedAsync(line.TenantId, payload, ct);
+        await ingest.IngestTrustedAsync(line.TenantId, payload, cancellationToken: ct);
     }
     return Results.Ok(new { status = "ok" });
 }).AllowAnonymous().DisableAntiforgery();
 
+// ===== Emulador de canal WhatsApp (pruebas) =====
+// Inyecta un mensaje entrante en un canal SIMULADO (linea Provider=Emulator, sin nada externo) y corre
+// la atencion del agente de forma SINCRONA. Toda la comunicacion (entrante, prompts, herramientas,
+// respuesta) queda en la bitacora del agente y en la conversacion. Sirve para probar sin numero real.
+app.MapPost("/api/test/agent", async (
+    CubotNails.SuperAdmin.TestAgentRequest body,
+    System.Security.Claims.ClaimsPrincipal user,
+    CubotNails.Application.Common.IApplicationDbContext db,
+    CubotNails.Application.Tenancy.IChatIngestService ingest,
+    IServiceScopeFactory scopes,
+    CancellationToken ct) =>
+{
+    if (!Guid.TryParse(user.FindFirst("tenant_id")?.Value, out var tenantId))
+    {
+        return Results.BadRequest(new { error = "No hay un tenant activo en la sesion." });
+    }
+    if (body is null || string.IsNullOrWhiteSpace(body.Text))
+    {
+        return Results.BadRequest(new { error = "Falta el texto del mensaje." });
+    }
+
+    var now = DateTimeOffset.UtcNow;
+
+    // 1. Linea emulada del tenant (una sola, reutilizable).
+    var line = await db.WhatsAppLines.FirstOrDefaultAsync(
+        l => l.TenantId == tenantId && l.Provider == CubotNails.Domain.Enums.WhatsAppProvider.Emulator, ct);
+    if (line is null)
+    {
+        line = new CubotNails.Domain.Entities.WhatsAppLine
+        {
+            TenantId = tenantId,
+            InstanceName = "Canal de pruebas",
+            PhoneNumber = "Emulador",
+            Provider = CubotNails.Domain.Enums.WhatsAppProvider.Emulator,
+            Status = CubotNails.Domain.Enums.WhatsAppLineStatus.Connected,
+            LastConnectedAt = now,
+            LastStatusAt = now
+        };
+        db.WhatsAppLines.Add(line);
+        await db.SaveChangesAsync(ct);
+    }
+    else if (line.Status != CubotNails.Domain.Enums.WhatsAppLineStatus.Connected)
+    {
+        line.Status = CubotNails.Domain.Enums.WhatsAppLineStatus.Connected;
+        line.LastStatusAt = now;
+        await db.SaveChangesAsync(ct);
+    }
+
+    // 2. Agente a probar: el indicado o el primer agente activo.
+    var agent = body.AgentId is Guid aid
+        ? await db.AiAgents.FirstOrDefaultAsync(a => a.Id == aid, ct)
+        : await db.AiAgents.Where(a => a.IsActive).OrderBy(a => a.SortOrder).FirstOrDefaultAsync(ct);
+    if (agent is null)
+    {
+        return Results.BadRequest(new { error = "No hay un agente activo para probar. Enciende un agente en Agentes." });
+    }
+    if (!agent.IsActive)
+    {
+        return Results.BadRequest(new { error = "El agente elegido esta apagado; enciendelo para probarlo." });
+    }
+
+    // 3. Vincular el agente al canal emulado (una linea = un agente).
+    var binding = await db.AiAgentLineBindings.FirstOrDefaultAsync(b => b.WhatsAppLineId == line.Id, ct);
+    if (binding is null)
+    {
+        binding = new CubotNails.Domain.Entities.AiAgentLineBinding
+        {
+            TenantId = tenantId,
+            AgentId = agent.Id,
+            WhatsAppLineId = line.Id,
+            IsConnected = true,
+            AutoConfirm = true
+        };
+        db.AiAgentLineBindings.Add(binding);
+    }
+    else
+    {
+        binding.AgentId = agent.Id;
+        binding.IsConnected = true;
+    }
+    await db.SaveChangesAsync(ct);
+
+    // 4. Inyectar el mensaje entrante (sin encolar: corremos la atencion de inmediato).
+    var phone = string.IsNullOrWhiteSpace(body.ContactPhone) ? "573001112233" : new string(body.ContactPhone.Where(char.IsDigit).ToArray());
+    if (phone.Length == 0) { phone = "573001112233"; }
+    var name = string.IsNullOrWhiteSpace(body.ContactName) ? "Cliente de prueba" : body.ContactName.Trim();
+    var payload = new CubotNails.Application.Tenancy.IngestMessageRequest(
+        phone, name, "emu-in-" + Guid.NewGuid().ToString("N"), body.Text.Trim(), "text", now, line.Id);
+    await ingest.IngestTrustedAsync(tenantId, payload, enqueueDispatch: false, cancellationToken: ct);
+
+    var conv = await db.Conversations.FirstOrDefaultAsync(
+        c => c.TenantId == tenantId && c.WhatsAppLineId == line.Id && c.ContactPhone == phone, ct);
+    if (conv is null) { return Results.Problem("No se pudo crear la conversacion de prueba."); }
+
+    // 5. Atender de forma sincrona (fija el tenant en el scope, igual que el despachador en background).
+    using (CubotNails.SuperAdmin.Auth.AmbientTenantContext.Begin(tenantId))
+    using (var scope = scopes.CreateScope())
+    {
+        var runner = scope.ServiceProvider.GetRequiredService<CubotNails.Application.Tenancy.IAgentConversationService>();
+        await runner.RunAsync(conv.Id, ct);
+    }
+
+    // 6. Devolver la respuesta del agente (ultimo saliente) para inspeccion rapida.
+    var reply = await db.Messages.AsNoTracking()
+        .Where(m => m.ConversationId == conv.Id && m.Direction == CubotNails.Domain.Enums.MessageDirection.Outbound)
+        .OrderByDescending(m => m.SentAt)
+        .Select(m => m.Body)
+        .FirstOrDefaultAsync(ct);
+
+    return Results.Ok(new { conversationId = conv.Id, lineId = line.Id, agentId = agent.Id, agentName = agent.Name, reply });
+}).RequireAuthorization("TenantMember").DisableAntiforgery();
+
 app.Run();
+
+namespace CubotNails.SuperAdmin
+{
+    /// <summary>Cuerpo del emulador de canal: texto del cliente + opciones de prueba.</summary>
+    public sealed record TestAgentRequest(string Text, Guid? AgentId = null, string? ContactPhone = null, string? ContactName = null);
+}

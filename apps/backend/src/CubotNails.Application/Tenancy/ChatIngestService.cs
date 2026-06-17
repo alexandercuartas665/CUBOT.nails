@@ -37,12 +37,12 @@ public sealed class ChatIngestService : IChatIngestService
             return ChatIngestResult.Unauthorized;
         }
 
-        return await IngestTrustedAsync(tenantId, payload, cancellationToken);
+        return await IngestTrustedAsync(tenantId, payload, cancellationToken: cancellationToken);
     }
 
     // Persiste un entrante ya autorizado por el llamador (webhook crudo de Evolution validado
     // con token global + instancia conocida). Mantiene idempotencia y difusion en tiempo real.
-    public async Task<ChatIngestResult> IngestTrustedAsync(Guid tenantId, IngestMessageRequest payload, CancellationToken cancellationToken = default)
+    public async Task<ChatIngestResult> IngestTrustedAsync(Guid tenantId, IngestMessageRequest payload, bool enqueueDispatch = true, CancellationToken cancellationToken = default)
     {
         // Idempotencia por id externo.
         var duplicate = await _db.Messages
@@ -106,7 +106,7 @@ public sealed class ChatIngestService : IChatIngestService
 
         // Si la conversacion llego por una linea, encolamos la atencion del agente (el despachador
         // decide si hay un agente conectado a esa linea; aqui no bloqueamos el webhook).
-        if (lineId is not null)
+        if (lineId is not null && enqueueDispatch)
         {
             _agentQueue.Schedule(tenantId, conversation.Id);
         }
