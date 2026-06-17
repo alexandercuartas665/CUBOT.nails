@@ -231,6 +231,26 @@ else
                         <div class="text-danger small" style="margin-bottom:6px;">@_chatError</div>
                     }
                     <div class="cv-composer-box">
+                        @{ var slashItems = SlashItems(); }
+                        @if (slashItems.Count > 0)
+                        {
+                            <div class="slash-pop">
+                                <div class="slash-pop-head"><span>Pregrabados</span><em>Enter para insertar</em></div>
+                                @for (var i = 0; i < slashItems.Count; i++)
+                                {
+                                    var t = slashItems[i];
+                                    var sel = i == _slashSel;
+                                    var nm = string.IsNullOrWhiteSpace(t.Name) ? Trunc(FillTemplate(t.Body), 24) : t.Name!;
+                                    var prev = Trunc(FillTemplate(t.Body), 70);
+                                    var meta = CategoryLabel(t.Category) + (t.MediaType != MessageMediaType.None ? " - " + MediaIcon(t.MediaType) : "");
+                                    <button type="button" class="slash-item @(sel ? "sel" : "")" @onclick="() => PickSlashAsync(t)">
+                                        <span class="slash-name">/@nm</span>
+                                        <span class="slash-cat">@meta</span>
+                                        <span class="slash-prev">@prev</span>
+                                    </button>
+                                }
+                            </div>
+                        }
                         <div class="pl-attach">
                             <button class="pl-attach-btn" title="Adjuntar" @onclick="() => _attachOpen = !_attachOpen" disabled="@_sending">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -752,10 +772,72 @@ else
 
     private async Task ChatKeyDown(KeyboardEventArgs e)
     {
+        // Si el popup de comandos "/" esta abierto, las flechas/Enter/Esc lo manejan a el.
+        var slash = SlashItems();
+        if (slash.Count > 0)
+        {
+            if (e.Key == "ArrowDown") { _slashSel = Math.Min(_slashSel + 1, slash.Count - 1); return; }
+            if (e.Key == "ArrowUp") { _slashSel = Math.Max(_slashSel - 1, 0); return; }
+            if (e.Key == "Escape") { _slashDismissed = true; return; }
+            if (e.Key == "Enter" && !e.ShiftKey)
+            {
+                await PickSlashAsync(slash[Math.Clamp(_slashSel, 0, slash.Count - 1)]);
+                return;
+            }
+        }
         if (e.Key == "Enter" && !e.ShiftKey)
         {
             await SendAsync();
         }
+    }
+
+    // ===== Comando "/" en el composer =====
+    // Si el borrador empieza por "/", devuelve los pregrabados que coinciden con el nombre escrito
+    // tras la barra (los que no tienen nombre se buscan por su texto). Lista vacia = sin popup.
+    private int _slashSel;
+    private string _slashQuery = "\0";
+    private bool _slashDismissed;
+
+    private List<MessageTemplateDto> SlashItems()
+    {
+        var d = _draft;
+        if (string.IsNullOrEmpty(d) || d[0] != '/')
+        {
+            _slashQuery = "\0";
+            _slashDismissed = false;
+            return new();
+        }
+        var rest = d.Substring(1);
+        var nl = rest.IndexOf('\n');
+        if (nl >= 0) { rest = rest.Substring(0, nl); }
+        var q = rest.Trim();
+        if (q != _slashQuery) { _slashQuery = q; _slashSel = 0; _slashDismissed = false; }
+        if (_slashDismissed) { return new(); }
+        var items = _templates
+            .Where(t => SlashMatch(t, q))
+            .OrderByDescending(t => (t.Name ?? "").StartsWith(q, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(t => t.SortOrder)
+            .Take(8)
+            .ToList();
+        if (_slashSel >= items.Count) { _slashSel = Math.Max(0, items.Count - 1); }
+        return items;
+    }
+
+    private static bool SlashMatch(MessageTemplateDto t, string q)
+    {
+        if (string.IsNullOrEmpty(q)) { return true; }
+        var cmp = StringComparison.OrdinalIgnoreCase;
+        if (!string.IsNullOrWhiteSpace(t.Name)) { return t.Name!.Contains(q, cmp); }
+        return t.Body?.Contains(q, cmp) ?? false;
+    }
+
+    private async Task PickSlashAsync(MessageTemplateDto t)
+    {
+        _draft = null;            // quita el "/consulta" del cuadro
+        _slashQuery = "\0";
+        _slashSel = 0;
+        _slashDismissed = false;
+        await UseTemplateAsync(t); // texto: rellena el cuadro; media: lo envia (igual que un chip)
     }
 
     private async Task EnsureHubAsync()
