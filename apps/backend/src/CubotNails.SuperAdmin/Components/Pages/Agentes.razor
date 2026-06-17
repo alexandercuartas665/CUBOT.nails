@@ -125,6 +125,44 @@ else
             </div>
             <div class="modal-body">
               <div class="ag-editor-cols">
+               @* ===== Columna izquierda: historial de versiones (red de seguridad) ===== *@
+               @if (_editId is not null)
+               {
+                   <div class="ag-editor-versions">
+                       <div class="pl-stagegroup-title" style="margin:0 0 8px;">Historial de versiones</div>
+                       <div class="text-muted" style="font-size:11px;line-height:1.5;margin-bottom:10px;">Cada "Guardar cambios" guarda una copia del prompt base + enrutados (ultimas @MaxVersionsShown). Pulsa una version anterior para restaurarla.</div>
+                       @if (_versionsLoading)
+                       {
+                           <div class="text-muted small">Cargando...</div>
+                       }
+                       else if (_versions.Count == 0)
+                       {
+                           <div class="text-muted" style="font-size:11.5px;line-height:1.5;">Aun no hay versiones guardadas. Se crea una cada vez que pulsas <strong>"Guardar cambios"</strong>.</div>
+                       }
+                       else
+                       {
+                           <div style="display:flex;flex-direction:column;gap:5px;">
+                               @foreach (var v in _versions)
+                               {
+                                   <button type="button" @onclick="() => AskRestoreVersion(v)" disabled="@(_busy || v.Index == 0)"
+                                           title="@(v.Index == 0 ? "Es la version actual" : "Restaurar esta version")"
+                                           style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:1px solid var(--border);background:@(v.Index == 0 ? "rgba(108,76,241,.06)" : "transparent");border-radius:7px;padding:7px 9px;cursor:@(v.Index == 0 ? "default" : "pointer");font-size:12px;">
+                                       <span style="width:7px;height:7px;border-radius:50%;background:@(v.Index == 0 ? "var(--primary,#6c4cf1)" : "var(--border)");flex:0 0 auto;"></span>
+                                       <span style="white-space:nowrap;">@v.SavedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                                       @if (v.Index == 0)
+                                       {
+                                           <span style="margin-left:auto;font-size:10px;color:var(--primary,#6c4cf1);">actual</span>
+                                       }
+                                       else
+                                       {
+                                           <span style="margin-left:auto;font-size:10px;color:var(--muted-foreground);">Restaurar</span>
+                                       }
+                                   </button>
+                               }
+                           </div>
+                       }
+                   </div>
+               }
                <div class="ag-editor-left">
                 <div class="field-row">
                     <div class="field">
@@ -390,45 +428,6 @@ else
                         }
                     </div>
 
-                    @* ===== Historial de versiones de prompts (red de seguridad) - acordeon ===== *@
-                    <div class="ag-accordion">
-                        <div class="ag-accordion-head" role="button" tabindex="0" @onclick="ToggleVersionHistory">
-                            <span class="ag-accordion-chev @(_versionsOpen ? "open" : "")">&#9656;</span>
-                            <span class="pl-stagegroup-title" style="margin:0;">Historial de versiones</span>
-                            <span class="ag-accordion-count">@_versions.Count</span>
-                        </div>
-                        @if (_versionsOpen)
-                        {
-                            <div class="ag-accordion-body">
-                                <div class="text-muted" style="font-size:12px;margin-bottom:10px;">
-                                    Cada vez que guardas cambios se almacena una copia del <strong>prompt base + prompts enrutados</strong> (se conservan las ultimas @MaxVersionsShown). Si borras o editas algo por error, puedes <strong>restaurar</strong> una version anterior.
-                                </div>
-                                @if (_versionsLoading)
-                                {
-                                    <div class="text-muted small">Cargando historial...</div>
-                                }
-                                else if (_versions.Count == 0)
-                                {
-                                    <div class="text-muted small">Aun no hay versiones guardadas. Se crea una cada vez que pulsas "Guardar cambios".</div>
-                                }
-                                else
-                                {
-                                    <div class="ag-list">
-                                        @foreach (var v in _versions)
-                                        {
-                                            <div class="ag-item">
-                                                <div class="ag-item-main">
-                                                    <div class="ag-item-name">@(v.Index == 0 ? "Version actual" : $"Version #{_versions.Count - v.Index}") &middot; @v.SavedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
-                                                    <div class="ag-item-sub">Prompt base: @(string.IsNullOrWhiteSpace(v.BasePrompt) ? "(vacio)" : Trim(v.BasePrompt, 70)) &middot; @v.Prompts.Count prompt@(v.Prompts.Count == 1 ? "" : "s") enrutado@(v.Prompts.Count == 1 ? "" : "s")</div>
-                                                </div>
-                                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => AskRestoreVersion(v)" disabled="@(_busy || v.Index == 0)" title="@(v.Index == 0 ? "Es la version actual" : "Restaurar esta version")">Restaurar</button>
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        }
-                    </div>
                 }
                </div>@* /ag-editor-left *@
 
