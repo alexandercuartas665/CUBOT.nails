@@ -166,6 +166,22 @@ else
                     </div>
                 </div>
             }
+            @foreach (var ff in FilterableFields())
+            {
+                var ffVals = DistinctFieldValues(ff.FieldKey);
+                @if (ffVals.Count > 0)
+                {
+                    <div class="pl-filt-group">
+                        <div class="pl-filt-lbl">@ff.Label</div>
+                        <div class="pl-chips">
+                            @foreach (var val in ffVals)
+                            {
+                                <button class="pl-fchip @(FieldFilterOn(ff.FieldKey, val) ? "on" : "")" @onclick="() => ToggleFieldFilter(ff.FieldKey, val)">@val</button>
+                            }
+                        </div>
+                    </div>
+                }
+            }
             <div class="pl-filt-group">
                 <div class="pl-filt-lbl">Atencion</div>
                 <label class="pl-toggle">
@@ -1556,6 +1572,10 @@ else
                                     Incluir detalle por valor (un texto antes de cada valor)
                                 </label>
                             }
+                            <label class="form-check" style="display:flex;align-items:center;gap:8px;font-weight:500;margin-top:8px;">
+                                <input type="checkbox" @bind="_nf.ShowInFilter" />
+                                Mostrar como filtro en el tablero (un chip por cada valor)
+                            </label>
                         </div>
                     </div>
                     @if (_nf.FieldType == PipelineFieldType.Total)
@@ -1634,6 +1654,8 @@ else
     private readonly HashSet<string> _filterValue = new();
     private readonly HashSet<string> _filterDestinos = new();
     private readonly HashSet<Guid> _filterUnits = new();
+    // Filtros por campo dinamico marcado "mostrar en filtro": clave de campo -> valores seleccionados.
+    private readonly Dictionary<string, HashSet<string>> _filterFields = new();
     private bool _onlyUnanswered;
 
     // Tarjetas "no vistas": leads que este navegador aun no abrio se resaltan. Persistido en localStorage por tenant.
@@ -2926,12 +2948,12 @@ else
             if (_editingFieldId is Guid editId)
             {
                 await PipelineSvc.UpdateFieldAsync(editId,
-                    new UpdatePipelineFieldRequest(_nf.Label!, _nf.FieldType, _nf.Column, options, _nf.Description, _nf.AllowMultiple, repeat, _nf.MultiWithDetail, totalKeys), actor);
+                    new UpdatePipelineFieldRequest(_nf.Label!, _nf.FieldType, _nf.Column, options, _nf.Description, _nf.AllowMultiple, repeat, _nf.MultiWithDetail, totalKeys, _nf.ShowInFilter), actor);
             }
             else
             {
                 var created = await PipelineSvc.CreateFieldAsync(
-                    new CreatePipelineFieldRequest(_cfgStageId, _nf.Label!, _nf.FieldType, _nf.Column, options, null, _nf.Description, _nf.AllowMultiple, repeat, _nf.MultiWithDetail, totalKeys), actor);
+                    new CreatePipelineFieldRequest(_cfgStageId, _nf.Label!, _nf.FieldType, _nf.Column, options, null, _nf.Description, _nf.AllowMultiple, repeat, _nf.MultiWithDetail, totalKeys, _nf.ShowInFilter), actor);
                 if (created is null)
                 {
                     _cfgFieldMsg = "Ese nombre coincide con un campo de sistema del lead (nombre, telefono, destino, valor, moneda). Usa el marcador de sistema en su lugar (ej. {{destination}}).";
@@ -2959,6 +2981,7 @@ else
             AllowMultiple = f.AllowMultiple,
             RepeatWithFieldKey = f.RepeatWithFieldKey,
             MultiWithDetail = f.MultiWithDetail,
+            ShowInFilter = f.ShowInFilter,
             TotalSourceKeys = string.IsNullOrWhiteSpace(f.TotalSourceKeys)
                 ? new List<string>()
                 : f.TotalSourceKeys.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
@@ -3072,7 +3095,7 @@ else
         {
             var actor = await ActorAsync();
             await PipelineSvc.UpdateFieldAsync(f.Id,
-                new UpdatePipelineFieldRequest(f.Label, f.FieldType, newCol, f.Options, f.Description, f.AllowMultiple, f.RepeatWithFieldKey, f.MultiWithDetail, f.TotalSourceKeys), actor);
+                new UpdatePipelineFieldRequest(f.Label, f.FieldType, newCol, f.Options, f.Description, f.AllowMultiple, f.RepeatWithFieldKey, f.MultiWithDetail, f.TotalSourceKeys, f.ShowInFilter), actor);
             await ReloadAsync();
         }
         finally { _busy = false; }
@@ -3465,8 +3488,8 @@ else
     }
 
     // ===== Busqueda, orden y filtros =====
-    private bool FiltersActive => _filterAsesores.Count > 0 || _filterSinAsesor || _filterStages.Count > 0 || _filterValue.Count > 0 || _filterDestinos.Count > 0 || _filterUnits.Count > 0 || _onlyUnanswered;
-    private int ActiveFilterCount => _filterAsesores.Count + (_filterSinAsesor ? 1 : 0) + _filterStages.Count + _filterValue.Count + _filterDestinos.Count + _filterUnits.Count + (_onlyUnanswered ? 1 : 0);
+    private bool FiltersActive => _filterAsesores.Count > 0 || _filterSinAsesor || _filterStages.Count > 0 || _filterValue.Count > 0 || _filterDestinos.Count > 0 || _filterUnits.Count > 0 || _filterFields.Count > 0 || _onlyUnanswered;
+    private int ActiveFilterCount => _filterAsesores.Count + (_filterSinAsesor ? 1 : 0) + _filterStages.Count + _filterValue.Count + _filterDestinos.Count + _filterUnits.Count + _filterFields.Sum(kv => kv.Value.Count) + (_onlyUnanswered ? 1 : 0);
 
     private void ClearFilters()
     {
@@ -3476,6 +3499,7 @@ else
         _filterValue.Clear();
         _filterDestinos.Clear();
         _filterUnits.Clear();
+        _filterFields.Clear();
         _onlyUnanswered = false;
     }
     private void ToggleAsesor(Guid id) { if (!_filterAsesores.Add(id)) { _filterAsesores.Remove(id); } }
@@ -3489,6 +3513,37 @@ else
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+    // ===== Filtros por campo dinamico (ShowInFilter) =====
+    // Campos marcados para filtrar, distintos por clave (un mismo campo puede existir en varias etapas).
+    private List<PipelineFieldDto> FilterableFields() =>
+        _fields.Where(f => f.ShowInFilter)
+            .GroupBy(f => f.FieldKey)
+            .Select(g => g.First())
+            .OrderBy(f => f.Label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private List<string> DistinctFieldValues(string key) =>
+        _leads.Select(l => Field(l, key))
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => v!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private bool FieldFilterOn(string key, string val) =>
+        _filterFields.TryGetValue(key, out var set) && set.Contains(val);
+
+    private void ToggleFieldFilter(string key, string val)
+    {
+        if (!_filterFields.TryGetValue(key, out var set))
+        {
+            set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _filterFields[key] = set;
+        }
+        if (!set.Add(val)) { set.Remove(val); }
+        if (set.Count == 0) { _filterFields.Remove(key); }
+    }
     private static string FirstName(string label)
     {
         var n = label.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -3526,6 +3581,12 @@ else
         if (_filterValue.Count > 0)
         {
             q = q.Where(MatchesValue);
+        }
+        foreach (var kv in _filterFields)
+        {
+            var key = kv.Key;
+            var vals = kv.Value;
+            q = q.Where(l => Field(l, key) is string fv && vals.Contains(fv));
         }
 
         q = _sortBy switch
@@ -3670,6 +3731,7 @@ else
         public bool AllowMultiple { get; set; }
         public string? RepeatWithFieldKey { get; set; }
         public bool MultiWithDetail { get; set; }
+        public bool ShowInFilter { get; set; }
         public List<string> TotalSourceKeys { get; set; } = new();
     }
 }

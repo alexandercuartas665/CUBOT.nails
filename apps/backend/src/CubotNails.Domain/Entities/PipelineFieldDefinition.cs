@@ -35,6 +35,9 @@ public class PipelineFieldDefinition : TenantEntity
     /// <summary>Permite capturar varios valores en este campo (p.ej. multiples telefonos). Se guardan como arreglo JSON.</summary>
     public bool AllowMultiple { get; set; }
 
+    /// <summary>Si es true, el campo aparece como filtro en el tablero: un chip por cada valor distinto presente.</summary>
+    public bool ShowInFilter { get; set; }
+
     /// <summary>
     /// Solo para campos AllowMultiple: cada valor lleva ademas un texto de detalle (descripcion).
     /// Se guarda como arreglo JSON de objetos {"d":detalle,"v":valor}. El detalle va primero.
