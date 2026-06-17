@@ -45,12 +45,20 @@ else
         <div class="cv-list-col">
             <div class="cv-search">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input placeholder="Buscar chat..." @bind="_search" @bind:event="oninput" />
+                <input placeholder="Buscar chat o texto de mensaje..." value="@_search" @oninput="OnSearchInput" />
+            </div>
+            <div class="cv-filters" style="display:flex;gap:6px;flex-wrap:wrap;padding:0 10px 8px;">
+                <button class="cv-fchip @(_showArchived ? "" : "on")" style="@FilterChipStyle(!_showArchived)" @onclick="ShowActiveView">Activas</button>
+                <button class="cv-fchip @(_showArchived ? "on" : "")" style="@FilterChipStyle(_showArchived)" @onclick="ShowArchivedView">Archivados</button>
+                <span style="width:1px;background:var(--border);margin:2px 2px;"></span>
+                <button class="cv-fchip" style="@FilterChipStyle(_pipeFilter == "all")" @onclick="@(() => _pipeFilter = "all")">Todos</button>
+                <button class="cv-fchip" style="@FilterChipStyle(_pipeFilter == "sin")" @onclick="@(() => _pipeFilter = "sin")">Sin pipeline</button>
+                <button class="cv-fchip" style="@FilterChipStyle(_pipeFilter == "con")" @onclick="@(() => _pipeFilter = "con")">En pipeline</button>
             </div>
             <div class="cv-list">
                 @if (FilteredConversations().Count == 0)
                 {
-                    <div class="cv-empty">No hay conversaciones todavia.</div>
+                    <div class="cv-empty">@(_showArchived ? "No hay conversaciones archivadas." : "No hay conversaciones todavia.")</div>
                 }
                 else
                 {
@@ -72,6 +80,17 @@ else
                                         <span class="cv-unread">@p.UnansweredCount</span>
                                     }
                                 </span>
+                            </span>
+                            <span class="cv-item-arch" role="button" title="@(_showArchived ? "Restaurar" : "Archivar")"
+                                  @onclick="() => ArchiveAsync(c, !_showArchived)" @onclick:stopPropagation="true">
+                                @if (_showArchived)
+                                {
+                                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg>
+                                }
+                                else
+                                {
+                                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+                                }
                             </span>
                         </button>
                     }
@@ -165,7 +184,17 @@ else
                                         <span>@m.SentByName &middot; </span>
                                     }
                                     @m.SentAt.LocalDateTime.ToString("hh:mm tt")
+                                    @if (m.Direction == MessageDirection.Outbound)
+                                    {
+                                        <button class="cv-msg-del" title="Eliminar para todos" @onclick="() => OpenDeleteMsg(m)">
+                                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        </button>
+                                    }
                                 </div>
+                                @if (!string.IsNullOrWhiteSpace(m.Reaction))
+                                {
+                                    <span class="cv-bubble-reaction" title="Reaccion">@m.Reaction</span>
+                                }
                             </div>
                         }
                     }
@@ -186,7 +215,8 @@ else
                         @foreach (var tpl in CurrentTemplates())
                         {
                             var filled = FillTemplate(tpl.Body);
-                            var label = tpl.MediaType == MessageMediaType.None ? filled : $"{MediaIcon(tpl.MediaType)} {(string.IsNullOrWhiteSpace(filled) ? tpl.MediaType.ToString() : filled)}";
+                            var shown = string.IsNullOrWhiteSpace(tpl.Name) ? filled : tpl.Name;
+                            var label = tpl.MediaType == MessageMediaType.None ? shown : $"{MediaIcon(tpl.MediaType)} {(string.IsNullOrWhiteSpace(shown) ? tpl.MediaType.ToString() : shown)}";
                             <button class="pl-quick-chip" title="@filled" @onclick="() => UseTemplateAsync(tpl)">@label</button>
                         }
                         @if (CurrentTemplates().Count == 0)
@@ -316,6 +346,11 @@ else
                     <div class="text-muted" style="font-size:11px;margin-top:3px;">Escribe un nombre nuevo para crear otra categoria.</div>
                 </div>
                 <div class="field">
+                    <label class="form-label">Nombre (opcional)</label>
+                    <input class="form-control" @bind="_tplFormName" placeholder="Etiqueta corta, ej. Saludo inicial" autocomplete="off" maxlength="120" />
+                    <div class="text-muted" style="font-size:11px;margin-top:3px;">Si lo defines, se muestra en el chip y en el comando "/".</div>
+                </div>
+                <div class="field">
                     <label class="form-label">Mensaje</label>
                     <textarea class="form-control" rows="2" @bind="_tplFormBody" placeholder="Usa {asesor} y {destino} para personalizar"></textarea>
                 </div>
@@ -354,7 +389,11 @@ else
                     {
                         <div class="cfg-row">
                             <div class="grow">
-                                <div style="font-size:13px;">
+                                @if (!string.IsNullOrWhiteSpace(t.Name))
+                                {
+                                    <div style="font-size:12.5px;font-weight:600;">@t.Name</div>
+                                }
+                                <div style="font-size:13px;color:@(string.IsNullOrWhiteSpace(t.Name) ? "inherit" : "var(--muted-foreground)");">
                                     @if (t.MediaType != MessageMediaType.None) { <span>@MediaIcon(t.MediaType) </span> }
                                     @(string.IsNullOrWhiteSpace(t.Body) ? "(solo adjunto)" : t.Body)
                                 </div>
@@ -367,6 +406,34 @@ else
             </div>
             <div class="modal-foot">
                 <button class="btn btn-outline-secondary" @onclick="() => _tplManagerOpen = false">Listo</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: eliminar mensaje para todos ===== *@
+@if (_deleteMsgOpen)
+{
+    <div class="modal-overlay" style="z-index:1300;">
+        <div class="modal-dialog" style="max-width:440px;">
+            <div class="modal-head">
+                <h3>Eliminar para todos</h3>
+                <button class="modal-close" @onclick="() => { _deleteMsgOpen = false; _deleteMsgTarget = null; }">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size:14px;margin-bottom:10px;">Este mensaje se eliminara para todos en WhatsApp (tambien en el telefono del cliente). No se puede deshacer.</div>
+                @if (_deleteMsgTarget is not null && !string.IsNullOrWhiteSpace(_deleteMsgTarget.Body))
+                {
+                    <div class="text-muted" style="font-size:12.5px;border-left:3px solid var(--border);padding-left:8px;">@Trunc(_deleteMsgTarget.Body, 160)</div>
+                }
+                @if (_deleteMsgError is not null)
+                {
+                    <div class="text-danger small" style="margin-top:8px;">@_deleteMsgError</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="() => { _deleteMsgOpen = false; _deleteMsgTarget = null; }" disabled="@_deleteMsgBusy">Cancelar</button>
+                <button class="btn btn-danger" @onclick="ConfirmDeleteMsgAsync" disabled="@_deleteMsgBusy">Eliminar para todos</button>
             </div>
         </div>
     </div>
@@ -470,6 +537,17 @@ else
     private bool _loading = true;
     private string? _tenantId;
     private string _search = string.Empty;
+    // Filtros de la bandeja: vista archivados, filtro de pipeline y busqueda por texto de mensaje (con debounce).
+    private bool _showArchived;
+    private List<ConversationDto> _archived = new();
+    private string _pipeFilter = "all";
+    private HashSet<Guid>? _msgMatchIds;
+    private CancellationTokenSource? _searchCts;
+    // Eliminar mensaje para todos.
+    private bool _deleteMsgOpen;
+    private bool _deleteMsgBusy;
+    private MessageDto? _deleteMsgTarget;
+    private string? _deleteMsgError;
 
     private List<WhatsAppLineDto> _lines = new();
     private List<ConversationDto> _conversations = new();
@@ -502,6 +580,7 @@ else
     private string? _tplFormError;
     private Guid? _tplEditId;
     private string _tplFormCategory = "saludo";
+    private string? _tplFormName;
     private string? _tplFormBody;
     private MessageMediaType _tplFormMediaType = MessageMediaType.None;
     private string? _tplFormMediaUrl;
@@ -547,12 +626,97 @@ else
 
     private List<ConversationDto> FilteredConversations()
     {
-        if (string.IsNullOrWhiteSpace(_search)) { return _conversations; }
-        var s = _search.Trim();
-        return _conversations.Where(c =>
-            (c.ContactName?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
-            || (c.ContactPhone?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+        IEnumerable<ConversationDto> q = _showArchived ? _archived : _conversations;
+        // Filtro por pipeline.
+        if (_pipeFilter == "sin") { q = q.Where(c => c.LeadId is null); }
+        else if (_pipeFilter == "con") { q = q.Where(c => c.LeadId is not null); }
+        // Busqueda por nombre/telefono o por texto de mensaje (ids precargados con debounce).
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(c =>
+                (c.ContactName?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (c.ContactPhone?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (_msgMatchIds?.Contains(c.Id) ?? false));
+        }
+        return q.ToList();
     }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _searchCts?.Cancel();
+        var term = _search.Trim();
+        if (term.Length < 2) { _msgMatchIds = null; return; }
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+        try
+        {
+            await Task.Delay(300, cts.Token);
+            var ids = await ChatSvc.SearchConversationIdsByMessageAsync(term, cts.Token);
+            _msgMatchIds = ids.ToHashSet();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { /* tecleo siguiente cancelo esta busqueda */ }
+    }
+
+    private void ShowActiveView()
+    {
+        if (!_showArchived) { return; }
+        _showArchived = false;
+        _active = null; _activeLead = null;
+    }
+
+    private async Task ShowArchivedView()
+    {
+        if (_showArchived) { return; }
+        _showArchived = true;
+        _active = null; _activeLead = null;
+        _archived = (await ChatSvc.ListArchivedConversationsAsync())
+            .OrderByDescending(c => c.LastMessageAt ?? DateTimeOffset.MinValue).ToList();
+    }
+
+    private async Task ArchiveAsync(ConversationDto c, bool archived)
+    {
+        await ChatSvc.SetConversationArchivedAsync(c.Id, archived);
+        if (_active?.Id == c.Id) { _active = null; _activeLead = null; }
+        await ReloadConversationsAsync();
+        if (_showArchived)
+        {
+            _archived = (await ChatSvc.ListArchivedConversationsAsync())
+                .OrderByDescending(c2 => c2.LastMessageAt ?? DateTimeOffset.MinValue).ToList();
+        }
+    }
+
+    private static string FilterChipStyle(bool on) =>
+        on ? "background:var(--primary,#2563eb);color:#fff;border-color:var(--primary,#2563eb);"
+           : "background:transparent;";
+
+    private void OpenDeleteMsg(MessageDto m)
+    {
+        _deleteMsgTarget = m;
+        _deleteMsgError = null;
+        _deleteMsgOpen = true;
+    }
+
+    private async Task ConfirmDeleteMsgAsync()
+    {
+        if (_deleteMsgTarget is null) { return; }
+        _deleteMsgBusy = true;
+        try
+        {
+            var actor = await ActorAsync();
+            var r = await ChatSvc.DeleteMessageForEveryoneAsync(_deleteMsgTarget.Id, actor);
+            if (!r.Ok) { _deleteMsgError = r.Error ?? "No se pudo eliminar."; return; }
+            _messages.RemoveAll(m => m.Id == _deleteMsgTarget.Id);
+            _deleteMsgOpen = false;
+            _deleteMsgTarget = null;
+            await ReloadConversationsAsync();
+        }
+        finally { _deleteMsgBusy = false; }
+    }
+
+    private static string Trunc(string s, int max) => s.Length <= max ? s : s[..max] + "...";
 
     private async Task SelectAsync(ConversationDto c)
     {
@@ -842,6 +1006,7 @@ else
     {
         _tplEditId = t.Id;
         _tplFormCategory = t.Category;
+        _tplFormName = t.Name;
         _tplFormBody = t.Body;
         _tplFormMediaType = t.MediaType;
         _tplFormMediaUrl = t.MediaUrl;
@@ -852,6 +1017,7 @@ else
     private void ResetTemplateForm()
     {
         _tplEditId = null;
+        _tplFormName = null;
         _tplFormBody = null;
         _tplFormMediaType = MessageMediaType.None;
         _tplFormMediaUrl = null;
@@ -895,11 +1061,11 @@ else
             var actor = await ActorAsync();
             if (_tplEditId is null)
             {
-                await TemplatesSvc.CreateAsync(new CreateMessageTemplateRequest(_tplFormCategory, _tplFormBody ?? "", _tplFormMediaType, _tplFormMediaUrl, _tplFormMediaMime), actor);
+                await TemplatesSvc.CreateAsync(new CreateMessageTemplateRequest(_tplFormCategory, _tplFormBody ?? "", _tplFormMediaType, _tplFormMediaUrl, _tplFormMediaMime, _tplFormName), actor);
             }
             else
             {
-                await TemplatesSvc.UpdateAsync(_tplEditId.Value, new UpdateMessageTemplateRequest(_tplFormCategory, _tplFormBody ?? "", _tplFormMediaType, _tplFormMediaUrl, _tplFormMediaMime), actor);
+                await TemplatesSvc.UpdateAsync(_tplEditId.Value, new UpdateMessageTemplateRequest(_tplFormCategory, _tplFormBody ?? "", _tplFormMediaType, _tplFormMediaUrl, _tplFormMediaMime, _tplFormName), actor);
             }
             _templates = (await TemplatesSvc.ListAsync()).ToList();
             ResetTemplateForm();

@@ -604,6 +604,21 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .cv-line-tag { font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: var(--muted); color: var(--muted-foreground); }
 .cv-unread { font-size: 10px; font-weight: 700; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--destructive); color: #fff; display: grid; place-items: center; }
 
+/* Filtros de bandeja (activas/archivados + pipeline) */
+.cv-filters { align-items: center; }
+.cv-fchip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--foreground); cursor: pointer; line-height: 1.5; }
+.cv-fchip:hover { background: var(--muted); }
+.cv-fchip.on { background: var(--primary, #2563eb); color: #fff; border-color: var(--primary, #2563eb); }
+/* Boton archivar/restaurar por conversacion (aparece al pasar el mouse) */
+.cv-item { position: relative; }
+.cv-item-arch { position: absolute; right: 8px; bottom: 9px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; color: var(--muted-foreground); opacity: 0; transition: opacity .12s, background .12s; }
+.cv-item:hover .cv-item-arch { opacity: 1; }
+.cv-item-arch:hover { background: var(--muted); color: var(--foreground); }
+/* Eliminar mensaje para todos + reaccion */
+.cv-msg-del { background: none; border: none; color: inherit; opacity: 0.55; cursor: pointer; padding: 0 2px; margin-left: 6px; vertical-align: -2px; }
+.cv-msg-del:hover { opacity: 1; }
+.cv-bubble-reaction { display: inline-block; margin-top: 4px; font-size: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; line-height: 1.4; }
+
 .cv-thread-empty, .cv-side-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted-foreground); font-size: 13px; text-align: center; padding: 24px; }
 .cv-thread-empty svg { width: 46px; height: 46px; opacity: 0.4; }
 .cv-thread-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
