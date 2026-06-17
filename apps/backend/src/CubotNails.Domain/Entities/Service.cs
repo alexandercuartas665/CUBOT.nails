@@ -19,3 +19,13 @@ public class Service : TenantEntity
     public string? Color { get; set; }
     public bool IsActive { get; set; } = true;
 }
+
+/// <summary>Imagen de un servicio (archivo subido a wwwroot/uploads/services). TENANT-SCOPED.</summary>
+public class ServiceImage : TenantEntity
+{
+    public Guid ServiceId { get; set; }
+    public Service? Service { get; set; }
+    public string Url { get; set; } = null!;
+    public string? FileName { get; set; }
+    public int SortOrder { get; set; }
+}

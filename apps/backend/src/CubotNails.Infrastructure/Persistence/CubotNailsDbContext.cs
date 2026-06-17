@@ -83,6 +83,7 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
 
     // Modulo Configuracion del salon (Capa 2): catalogo, recursos, turnos base y excepciones.
     public DbSet<Service> Services => Set<Service>();
+    public DbSet<ServiceImage> ServiceImages => Set<ServiceImage>();
     public DbSet<Resource> Resources => Set<Resource>();
     public DbSet<ResourceServiceLink> ResourceServiceLinks => Set<ResourceServiceLink>();
     public DbSet<ShiftTemplate> ShiftTemplates => Set<ShiftTemplate>();
@@ -649,6 +650,14 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
             b.Property(x => x.Color).HasMaxLength(20);
             b.Property(x => x.Price).HasPrecision(14, 2);
             b.HasIndex(x => new { x.TenantId, x.Name });
+        });
+
+        modelBuilder.Entity<ServiceImage>(b =>
+        {
+            b.Property(x => x.Url).HasMaxLength(500).IsRequired();
+            b.Property(x => x.FileName).HasMaxLength(255);
+            b.HasOne(x => x.Service).WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.ServiceId, x.SortOrder });
         });
 
         modelBuilder.Entity<Resource>(b =>

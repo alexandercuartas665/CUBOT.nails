@@ -4,6 +4,7 @@
 @using CubotNails.Application.Tenancy
 @inject IServiceCatalogService Svc
 @inject IJSRuntime JS
+@inject IWebHostEnvironment Env
 
 <PageTitle>Servicios - CUBOT.nails</PageTitle>
 
@@ -50,6 +51,17 @@ else
             @foreach (var s in _items)
             {
                 <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:9px;@(s.IsActive ? "" : "opacity:.65;")">
+                    @{ var thumb = s.Images?.FirstOrDefault()?.Url; }
+                    @if (thumb is not null)
+                    {
+                        <div style="position:relative;margin:-16px -16px 4px;height:130px;border-radius:12px 12px 0 0;overflow:hidden;background:var(--muted);">
+                            <img src="@thumb" alt="@s.Name" style="width:100%;height:100%;object-fit:cover;" />
+                            @if (s.Images!.Count > 1)
+                            {
+                                <span style="position:absolute;bottom:6px;right:6px;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(0,0,0,.6);color:#fff;">@s.Images.Count fotos</span>
+                            }
+                        </div>
+                    }
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                         <div style="display:flex;align-items:center;gap:9px;min-width:0;">
                             <span style="flex:none;width:12px;height:12px;border-radius:4px;background:@(string.IsNullOrWhiteSpace(s.Color) ? "#A03DC9" : s.Color)"></span>
@@ -114,13 +126,35 @@ else
                         <input class="form-control" type="color" @bind="_form.Color" style="height:42px;padding:4px;" />
                     </div>
                 </div>
+                <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px;">
+                    <label class="form-label">Imagenes</label>
+                    @if (_editingId is null)
+                    {
+                        <div class="text-muted small">Guarda el servicio y luego podras agregar sus imagenes.</div>
+                    }
+                    else
+                    {
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+                            @foreach (var img in _images)
+                            {
+                                <div style="position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;border:1px solid var(--border);">
+                                    <img src="@img.Url" alt="@img.FileName" style="width:100%;height:100%;object-fit:cover;" />
+                                    <button type="button" title="Quitar" @onclick="() => RemoveImageAsync(img.Id)" disabled="@_busy"
+                                            style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;line-height:1;">&times;</button>
+                                </div>
+                            }
+                        </div>
+                        <InputFile OnChange="OnImagesSelectedAsync" accept="image/*" multiple />
+                        @if (_imgMsg is not null) { <div class="text-muted small" style="margin-top:4px;">@_imgMsg</div> }
+                    }
+                </div>
                 @if (_error is not null)
                 {
                     <div class="text-danger small">@_error</div>
                 }
             </div>
             <div class="modal-foot">
-                <button class="btn btn-outline-secondary" @onclick="() => _formOpen = false">Cancelar</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _formOpen = false">@(_editingId is null ? "Cancelar" : "Listo")</button>
                 <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_form.Name))">Guardar</button>
             </div>
         </div>
@@ -137,6 +171,8 @@ else
     private Guid? _editingId;
     private List<ServiceDto> _items = new();
     private FormModel _form = new();
+    private List<ServiceImageDto> _images = new();
+    private string? _imgMsg;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -149,7 +185,9 @@ else
     private void OpenForm(ServiceDto? s)
     {
         _error = null;
+        _imgMsg = null;
         _editingId = s?.Id;
+        _images = s?.Images?.ToList() ?? new();
         _form = s is null
             ? new FormModel { Color = "#A03DC9", DurationMinutes = 45 }
             : new FormModel { Name = s.Name, Description = s.Description, DurationMinutes = s.DurationMinutes, Price = s.Price, Category = s.Category, Color = string.IsNullOrWhiteSpace(s.Color) ? "#A03DC9" : s.Color };
@@ -164,12 +202,69 @@ else
         {
             var actor = await ActorAsync();
             var req = new SaveServiceRequest(_form.Name, _form.DurationMinutes, _form.Price, _form.Category, _form.Color, _form.Description);
-            var result = _editingId is Guid id ? await Svc.UpdateAsync(id, req, actor) : await Svc.CreateAsync(req, actor);
-            if (result is null) { _error = "No se pudo guardar."; return; }
-            _formOpen = false;
+            if (_editingId is Guid id)
+            {
+                var updated = await Svc.UpdateAsync(id, req, actor);
+                if (updated is null) { _error = "No se pudo guardar."; return; }
+                _images = updated.Images?.ToList() ?? _images;
+            }
+            else
+            {
+                // Tras crear, dejamos el modal ABIERTO para que se puedan agregar imagenes (ya hay Id).
+                var created = await Svc.CreateAsync(req, actor);
+                if (created is null) { _error = "No se pudo crear el servicio."; return; }
+                _editingId = created.Id;
+                _images = created.Images?.ToList() ?? new();
+            }
             await ReloadAsync();
         }
         finally { _busy = false; }
+    }
+
+    private async Task OnImagesSelectedAsync(InputFileChangeEventArgs e)
+    {
+        if (_editingId is not Guid id) { return; }
+        _busy = true; _imgMsg = null;
+        try
+        {
+            var actor = await ActorAsync();
+            foreach (var file in e.GetMultipleFiles(8))
+            {
+                var saved = await SaveImageFileAsync(file);
+                if (saved is null) { _imgMsg = "Alguna imagen no se pudo subir (max 10MB)."; continue; }
+                await Svc.AddImageAsync(id, saved.Value.Url, saved.Value.Name, actor);
+            }
+            var fresh = await Svc.GetAsync(id);
+            _images = fresh?.Images?.ToList() ?? _images;
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RemoveImageAsync(Guid imageId)
+    {
+        _busy = true;
+        try
+        {
+            await Svc.RemoveImageAsync(imageId, await ActorAsync());
+            if (_editingId is Guid id) { var fresh = await Svc.GetAsync(id); _images = fresh?.Images?.ToList() ?? new(); }
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task<(string Url, string Name)?> SaveImageFileAsync(IBrowserFile file)
+    {
+        const long max = 10L * 1024 * 1024;
+        if (file.Size <= 0 || file.Size > max) { return null; }
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(max).CopyToAsync(ms);
+        var ext = System.IO.Path.GetExtension(file.Name);
+        var dir = System.IO.Path.Combine(Env.WebRootPath, "uploads", "services");
+        System.IO.Directory.CreateDirectory(dir);
+        var name = $"svc-{Guid.NewGuid():N}{ext}";
+        await System.IO.File.WriteAllBytesAsync(System.IO.Path.Combine(dir, name), ms.ToArray());
+        return ($"/uploads/services/{name}", file.Name);
     }
 
     private async Task ToggleActiveAsync(ServiceDto s)
