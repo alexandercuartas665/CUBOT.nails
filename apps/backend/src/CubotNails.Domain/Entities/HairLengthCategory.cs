@@ -28,3 +28,26 @@ public class HairLengthReferenceImage : TenantEntity
     public string? FileName { get; set; }
     public int SortOrder { get; set; }
 }
+
+/// <summary>
+/// Resultado de clasificar por IA la foto de una clienta contra las medidas del salon. TENANT-SCOPED.
+/// La foto se guarda en almacenamiento PROTEGIDO (fuera de wwwroot): aqui solo el nombre del archivo,
+/// servido por un endpoint autorizado. Guardamos el resultado para historial/auditoria.
+/// </summary>
+public class HairLengthClassification : TenantEntity
+{
+    /// <summary>Nombre del archivo de la foto en el almacenamiento protegido (no es una URL publica).</summary>
+    public string? PhotoFileName { get; set; }
+
+    /// <summary>Categoria que la IA reconocio (si pudo mapearla a una del salon).</summary>
+    public Guid? PredictedCategoryId { get; set; }
+
+    /// <summary>Nombre del largo que devolvio la IA (tal cual), por si no mapea a una categoria.</summary>
+    public string? PredictedName { get; set; }
+
+    /// <summary>Confianza 0-100 reportada por la IA.</summary>
+    public int Confidence { get; set; }
+
+    /// <summary>Motivo/justificacion breve de la IA.</summary>
+    public string? Rationale { get; set; }
+}

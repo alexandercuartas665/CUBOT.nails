@@ -48,6 +48,9 @@ public sealed record AiToolMessage(string Role, string? Text, IReadOnlyList<AiTo
 public sealed record AiCompletion(bool Ok, string? Text, string? Error, int InputTokens, int OutputTokens,
     IReadOnlyList<AiToolCall> ToolCalls);
 
+/// <summary>Parte de un prompt MULTIMODAL: texto O imagen (base64 + mime). Para clasificacion por vision.</summary>
+public sealed record AiVisionPart(string? Text = null, string? ImageBase64 = null, string? ImageMime = null);
+
 /// <summary>
 /// Cliente HTTP que habla con cada proveedor de IA (Gemini, OpenAI/ChatGPT, DeepSeek, Claude).
 /// Recibe la API key ya descifrada; no persiste ni loggea secretos.
@@ -76,6 +79,19 @@ public interface IAiProviderClient
         string systemPrompt,
         IReadOnlyList<AiToolMessage> messages,
         IReadOnlyList<AiToolSpec> tools,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Completa un prompt MULTIMODAL (texto + imagenes) en un unico turno de usuario y devuelve el texto.
+    /// Pensado para clasificacion por vision. Solo Gemini y Claude; otros proveedores devuelven error.
+    /// </summary>
+    Task<AiChatResult> CompleteVisionAsync(
+        AiProvider provider,
+        string apiKey,
+        string? baseUrl,
+        string model,
+        string systemPrompt,
+        IReadOnlyList<AiVisionPart> content,
         CancellationToken cancellationToken = default);
 }
 

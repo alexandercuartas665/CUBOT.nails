@@ -34,6 +34,85 @@ public sealed class AiProviderClient : IAiProviderClient
         }
     }
 
+    public async Task<AiChatResult> CompleteVisionAsync(AiProvider provider, string apiKey, string? baseUrl, string model,
+        string systemPrompt, IReadOnlyList<AiVisionPart> content, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return provider switch
+            {
+                AiProvider.Gemini => await GeminiVision(apiKey, baseUrl, model, systemPrompt, content, cancellationToken),
+                AiProvider.Claude => await ClaudeVision(apiKey, baseUrl, model, systemPrompt, content, cancellationToken),
+                _ => new AiChatResult(false, null, $"El proveedor {provider} no soporta vision en CUBOT.nails (usa Gemini o Claude).")
+            };
+        }
+        catch (Exception ex)
+        {
+            return new AiChatResult(false, null, $"No se pudo contactar al proveedor de vision: {ex.Message}");
+        }
+    }
+
+    // ===== Gemini (vision) =====
+    private async Task<AiChatResult> GeminiVision(string apiKey, string? baseUrl, string model, string systemPrompt,
+        IReadOnlyList<AiVisionPart> content, CancellationToken ct)
+    {
+        var url = $"{Base(baseUrl, "https://generativelanguage.googleapis.com")}/v1beta/models/{model}:generateContent?key={apiKey}";
+        var parts = content.Select(p => p.ImageBase64 is not null
+            ? (object)new { inlineData = new { mimeType = p.ImageMime ?? "image/jpeg", data = p.ImageBase64 } }
+            : new { text = p.Text ?? "" }).ToArray();
+        var body = new
+        {
+            systemInstruction = string.IsNullOrWhiteSpace(systemPrompt) ? null : new { parts = new[] { new { text = systemPrompt } } },
+            contents = new[] { new { role = "user", parts } }
+        };
+        using var resp = await _http.PostAsync(url, JsonContent(body), ct);
+        var raw = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode) { return Fail((int)resp.StatusCode, raw); }
+
+        using var doc = JsonDocument.Parse(raw);
+        var text = doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString();
+        var (inTok, outTok) = (0, 0);
+        if (doc.RootElement.TryGetProperty("usageMetadata", out var um))
+        {
+            inTok = um.TryGetProperty("promptTokenCount", out var p) ? p.GetInt32() : 0;
+            outTok = um.TryGetProperty("candidatesTokenCount", out var c) ? c.GetInt32() : 0;
+        }
+        return new AiChatResult(true, text, null, inTok, outTok);
+    }
+
+    // ===== Claude (vision) =====
+    private async Task<AiChatResult> ClaudeVision(string apiKey, string? baseUrl, string model, string systemPrompt,
+        IReadOnlyList<AiVisionPart> content, CancellationToken ct)
+    {
+        var url = $"{Base(baseUrl, "https://api.anthropic.com")}/v1/messages";
+        var blocks = content.Select(p => p.ImageBase64 is not null
+            ? (object)new { type = "image", source = new { type = "base64", media_type = p.ImageMime ?? "image/jpeg", data = p.ImageBase64 } }
+            : new { type = "text", text = p.Text ?? "" }).ToArray();
+        var body = new
+        {
+            model,
+            max_tokens = 1024,
+            system = string.IsNullOrWhiteSpace(systemPrompt) ? null : systemPrompt,
+            messages = new[] { new { role = "user", content = blocks } }
+        };
+        using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent(body) };
+        req.Headers.Add("x-api-key", apiKey);
+        req.Headers.Add("anthropic-version", "2023-06-01");
+        using var resp = await _http.SendAsync(req, ct);
+        var raw = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode) { return Fail((int)resp.StatusCode, raw); }
+
+        using var doc = JsonDocument.Parse(raw);
+        var text = doc.RootElement.GetProperty("content")[0].GetProperty("text").GetString();
+        var (inTok, outTok) = (0, 0);
+        if (doc.RootElement.TryGetProperty("usage", out var u))
+        {
+            inTok = u.TryGetProperty("input_tokens", out var p) ? p.GetInt32() : 0;
+            outTok = u.TryGetProperty("output_tokens", out var c) ? c.GetInt32() : 0;
+        }
+        return new AiChatResult(true, text, null, inTok, outTok);
+    }
+
     private static string Base(string? baseUrl, string fallback) =>
         (string.IsNullOrWhiteSpace(baseUrl) ? fallback : baseUrl).TrimEnd('/');
 

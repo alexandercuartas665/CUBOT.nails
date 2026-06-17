@@ -3,6 +3,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using CubotNails.Application.Tenancy
 @inject IHairLengthService Svc
+@inject IHairClassifierService Classifier
 @inject IJSRuntime JS
 @inject IWebHostEnvironment Env
 
@@ -21,6 +22,54 @@
     </div>
     <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Nueva medida</button>
 </div>
+
+@if (!_loading && _items.Any(c => c.IsActive && c.Images.Count > 0))
+{
+    <div class="card" style="padding:16px;margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div>
+                <div style="font-weight:800;font-size:15px;">Clasificar el largo de una clienta (IA)</div>
+                <div class="text-muted" style="font-size:12px;">Sube una foto de la clienta y la IA estima a que medida corresponde, comparando con tus fotos de referencia. Es una sugerencia: confirmala con tu criterio.</div>
+            </div>
+            <label class="btn btn-primary" style="cursor:pointer;@(_classifying ? "opacity:.6;pointer-events:none;" : "")">
+                @(_classifying ? "Analizando..." : "Subir foto y clasificar")
+                <InputFile OnChange="OnClientPhotoAsync" accept="image/*" style="display:none;" />
+            </label>
+        </div>
+        @if (_classifyMsg is not null)
+        {
+            <div class="text-danger small" style="margin-top:10px;">@_classifyMsg</div>
+        }
+        @if (_classifyResult is { Ok: true } r)
+        {
+            var matched = _items.FirstOrDefault(c => c.Id == r.CategoryId);
+            <div style="display:flex;gap:16px;align-items:flex-start;margin-top:14px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:14px;">
+                @if (!string.IsNullOrWhiteSpace(r.PhotoUrl))
+                {
+                    <img src="@r.PhotoUrl" alt="Foto clienta" style="width:120px;height:120px;object-fit:cover;border-radius:12px;border:1px solid var(--border);" />
+                }
+                <div style="flex:1;min-width:220px;">
+                    <div style="font-size:12px;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;">Medida detectada</div>
+                    <div style="font-size:20px;font-weight:800;">@r.CategoryName <span style="font-size:13px;font-weight:600;color:var(--primary,#6c4cf1);">· @r.Confidence% confianza</span></div>
+                    @if (!string.IsNullOrWhiteSpace(r.Rationale))
+                    {
+                        <div class="text-muted" style="font-size:12.5px;margin-top:6px;">@r.Rationale</div>
+                    }
+                    @if (matched is not null && matched.Images.Count > 0)
+                    {
+                        <div class="text-muted" style="font-size:11px;margin-top:10px;">Referencia de "@matched.Name":</div>
+                        <div style="display:flex;gap:6px;margin-top:4px;">
+                            @foreach (var img in matched.Images)
+                            {
+                                <img src="@img.Url" alt="ref" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" />
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
 
 @if (_loading)
 {
@@ -118,6 +167,10 @@ else
     private string? _imgMsg;
     private Guid? _imgMsgFor;
     private List<HairLengthCategoryDto> _items = new();
+    // Clasificacion por IA
+    private bool _classifying;
+    private string? _classifyMsg;
+    private HairClassificationResultDto? _classifyResult;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -189,6 +242,36 @@ else
         _busy = true;
         try { await Svc.RemoveImageAsync(imageId, await ActorAsync()); await ReloadAsync(); }
         finally { _busy = false; }
+    }
+
+    // ===== Clasificar foto de clienta (IA de vision) =====
+    private async Task OnClientPhotoAsync(InputFileChangeEventArgs e)
+    {
+        _classifyMsg = null; _classifyResult = null;
+        var file = e.File;
+        const long max = 10L * 1024 * 1024;
+        if (file.Size <= 0 || file.Size > max) { _classifyMsg = "La foto no es valida o supera 10MB."; return; }
+        _classifying = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(max).CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            var ext = System.IO.Path.GetExtension(file.Name);
+            if (string.IsNullOrWhiteSpace(ext)) { ext = ".jpg"; }
+            // Almacenamiento PROTEGIDO: fuera de wwwroot. Se sirve por /media/hair/{id} con autorizacion.
+            var dir = System.IO.Path.Combine(Env.ContentRootPath, "protected-media", "hair");
+            System.IO.Directory.CreateDirectory(dir);
+            var name = $"client-{Guid.NewGuid():N}{ext}";
+            await System.IO.File.WriteAllBytesAsync(System.IO.Path.Combine(dir, name), bytes);
+            var b64 = Convert.ToBase64String(bytes);
+            var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+            var actor = await ActorAsync();
+            var res = await Classifier.ClassifyAsync(b64, mime, name, actor);
+            if (res.Ok) { _classifyResult = res; }
+            else { _classifyMsg = res.Error ?? "No se pudo clasificar la foto."; }
+        }
+        finally { _classifying = false; }
     }
 
     private async Task<(string Url, string Name)?> SaveImageFileAsync(IBrowserFile file)

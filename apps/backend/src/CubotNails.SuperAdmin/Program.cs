@@ -705,6 +705,25 @@ app.MapPost("/api/test/agent", async (
     return Results.Ok(new { conversationId = conv.Id, lineId = line.Id, agentId = agent.Id, agentName = agent.Name, reply });
 }).RequireAuthorization("TenantMember").DisableAntiforgery();
 
+// Sirve la FOTO PROTEGIDA de una clasificacion de cabello (almacenada fuera de wwwroot). Requiere sesion
+// de tenant; el query filter por tenant garantiza que solo se vean fotos del propio salon.
+app.MapGet("/media/hair/{id:guid}", async (
+    Guid id,
+    CubotNails.Application.Common.IApplicationDbContext db,
+    IWebHostEnvironment env,
+    CancellationToken ct) =>
+{
+    var rec = await db.HairLengthClassifications.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+    if (rec is null || string.IsNullOrWhiteSpace(rec.PhotoFileName)) { return Results.NotFound(); }
+    // Evita traversal: solo el nombre de archivo.
+    var safe = System.IO.Path.GetFileName(rec.PhotoFileName);
+    var path = System.IO.Path.Combine(env.ContentRootPath, "protected-media", "hair", safe);
+    if (!System.IO.File.Exists(path)) { return Results.NotFound(); }
+    var ext = System.IO.Path.GetExtension(safe).ToLowerInvariant();
+    var contentType = ext switch { ".png" => "image/png", ".webp" => "image/webp", ".gif" => "image/gif", _ => "image/jpeg" };
+    return Results.File(await System.IO.File.ReadAllBytesAsync(path, ct), contentType);
+}).RequireAuthorization("TenantMember");
+
 app.Run();
 
 namespace CubotNails.SuperAdmin

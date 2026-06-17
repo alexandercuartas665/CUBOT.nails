@@ -87,6 +87,7 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
     public DbSet<ServicePriceTier> ServicePriceTiers => Set<ServicePriceTier>();
     public DbSet<HairLengthCategory> HairLengthCategories => Set<HairLengthCategory>();
     public DbSet<HairLengthReferenceImage> HairLengthReferenceImages => Set<HairLengthReferenceImage>();
+    public DbSet<HairLengthClassification> HairLengthClassifications => Set<HairLengthClassification>();
     public DbSet<Resource> Resources => Set<Resource>();
     public DbSet<ResourceServiceLink> ResourceServiceLinks => Set<ResourceServiceLink>();
     public DbSet<ShiftTemplate> ShiftTemplates => Set<ShiftTemplate>();
@@ -684,6 +685,14 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
             b.Property(x => x.FileName).HasMaxLength(255);
             b.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.CategoryId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<HairLengthClassification>(b =>
+        {
+            b.Property(x => x.PhotoFileName).HasMaxLength(255);
+            b.Property(x => x.PredictedName).HasMaxLength(120);
+            b.Property(x => x.Rationale).HasColumnType("text");
+            b.HasIndex(x => new { x.TenantId, x.CreatedAt });
         });
 
         modelBuilder.Entity<Resource>(b =>
