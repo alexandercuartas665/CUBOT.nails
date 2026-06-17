@@ -115,10 +115,7 @@ public sealed class ProductToolset : IProductToolset
                     .ToArray();
                 list = words.Length == 0
                     ? byCat
-                    : list.Where(p => words.Any(w =>
-                        Normalize(p.Name).Contains(w)
-                        || (!string.IsNullOrWhiteSpace(p.Category) && Normalize(p.Category!).Contains(w))
-                        || (!string.IsNullOrWhiteSpace(p.Description) && Normalize(p.Description!).Contains(w)))).ToList();
+                    : list.Where(p => words.Any(w => HaystackContains(p, w))).ToList();
             }
             else
             {
@@ -128,11 +125,16 @@ public sealed class ProductToolset : IProductToolset
         if (!string.IsNullOrWhiteSpace(busqueda))
         {
             var q = Normalize(busqueda!);
-            list = list.Where(p =>
-                Normalize(p.Name).Contains(q)
-                || (!string.IsNullOrWhiteSpace(p.Sku) && Normalize(p.Sku!).Contains(q))
-                || (!string.IsNullOrWhiteSpace(p.Category) && Normalize(p.Category!).Contains(q))
-                || (!string.IsNullOrWhiteSpace(p.Description) && Normalize(p.Description!).Contains(q))).ToList();
+            // Coincidir por PALABRAS (no por la frase completa): el cliente/agente escribe "shampoo con
+            // keratina" pero el nombre es "Shampoo Maclaw Professional" y la keratina esta en la
+            // descripcion. Exigimos que cada palabra significativa aparezca en nombre/sku/categoria/desc.
+            var stop = new HashSet<string> { "con", "sin", "para", "los", "las", "del", "una", "uno", "unos", "unas", "que", "por", "the" };
+            var words = q.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length >= 3 && !stop.Contains(w))
+                .ToArray();
+            list = words.Length == 0
+                ? list.Where(p => HaystackContains(p, q)).ToList()
+                : list.Where(p => words.All(w => HaystackContains(p, w))).ToList();
         }
 
         var data = list.Take(30).Select(p => new
@@ -174,6 +176,13 @@ public sealed class ProductToolset : IProductToolset
         => el.ValueKind == JsonValueKind.Object && el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String
             ? v.GetString()
             : null;
+
+    // Una palabra (ya normalizada) aparece en nombre/sku/categoria/descripcion del producto.
+    private static bool HaystackContains(ProductDto p, string word) =>
+        Normalize(p.Name).Contains(word)
+        || (!string.IsNullOrWhiteSpace(p.Sku) && Normalize(p.Sku!).Contains(word))
+        || (!string.IsNullOrWhiteSpace(p.Category) && Normalize(p.Category!).Contains(word))
+        || (!string.IsNullOrWhiteSpace(p.Description) && Normalize(p.Description!).Contains(word));
 
     // Minusculas + sin acentos para comparar de forma laxa.
     private static string Normalize(string s)
