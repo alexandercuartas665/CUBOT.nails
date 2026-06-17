@@ -67,6 +67,8 @@ public interface IApplicationDbContext
     DbSet<Service> Services { get; }
     DbSet<ServiceImage> ServiceImages { get; }
     DbSet<ServicePriceTier> ServicePriceTiers { get; }
+    DbSet<HairLengthCategory> HairLengthCategories { get; }
+    DbSet<HairLengthReferenceImage> HairLengthReferenceImages { get; }
     DbSet<Resource> Resources { get; }
     DbSet<Sede> Sedes { get; }
     DbSet<Product> Products { get; }

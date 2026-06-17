@@ -70,6 +70,7 @@ public static class DependencyInjection
         services.AddScoped<Tenancy.ISedeService, Tenancy.SedeService>();
         services.AddScoped<Tenancy.IProductService, Tenancy.ProductService>();
         services.AddScoped<Tenancy.ICourseService, Tenancy.CourseService>();
+        services.AddScoped<Tenancy.IHairLengthService, Tenancy.HairLengthService>();
         services.AddScoped<Tenancy.IBusinessUnitService, Tenancy.BusinessUnitService>();
         // Motor de agenda y citas (Capa 2 - nucleo operativo).
         services.AddScoped<Tenancy.IAgendaService, Tenancy.AgendaService>();

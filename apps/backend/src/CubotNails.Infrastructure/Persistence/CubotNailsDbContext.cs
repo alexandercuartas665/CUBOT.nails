@@ -85,6 +85,8 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
     public DbSet<Service> Services => Set<Service>();
     public DbSet<ServiceImage> ServiceImages => Set<ServiceImage>();
     public DbSet<ServicePriceTier> ServicePriceTiers => Set<ServicePriceTier>();
+    public DbSet<HairLengthCategory> HairLengthCategories => Set<HairLengthCategory>();
+    public DbSet<HairLengthReferenceImage> HairLengthReferenceImages => Set<HairLengthReferenceImage>();
     public DbSet<Resource> Resources => Set<Resource>();
     public DbSet<ResourceServiceLink> ResourceServiceLinks => Set<ResourceServiceLink>();
     public DbSet<ShiftTemplate> ShiftTemplates => Set<ShiftTemplate>();
@@ -667,6 +669,21 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
             b.HasOne(x => x.Service).WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
             // Una tarifa por (servicio, largo de cabello).
             b.HasIndex(x => new { x.ServiceId, x.Length }).IsUnique();
+        });
+
+        modelBuilder.Entity<HairLengthCategory>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(80).IsRequired();
+            b.Property(x => x.Description).HasColumnType("text");
+            b.HasIndex(x => new { x.TenantId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<HairLengthReferenceImage>(b =>
+        {
+            b.Property(x => x.Url).HasMaxLength(500).IsRequired();
+            b.Property(x => x.FileName).HasMaxLength(255);
+            b.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.CategoryId, x.SortOrder });
         });
 
         modelBuilder.Entity<Resource>(b =>
