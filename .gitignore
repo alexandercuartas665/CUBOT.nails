@@ -77,3 +77,6 @@ tools/
 
 # Artefacto de runtime del script start local.
 .cubot-pid
+
+# Fotos protegidas (clasificacion de cabello) - nunca versionar
+apps/backend/src/CubotNails.SuperAdmin/protected-media/
