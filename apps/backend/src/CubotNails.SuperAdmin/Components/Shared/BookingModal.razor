@@ -115,6 +115,20 @@
                             </select>
                             <button type="button" class="btn btn-sm btn-primary" @onclick="AddService">+</button>
                         </div>
+                        @if (NeedsHair)
+                        {
+                            <div class="field" style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+                                <label class="form-label">Largo de cabello *</label>
+                                <select class="form-control" @bind="_hairLength">
+                                    <option value="">Elige el largo...</option>
+                                    <option value="@HairLength.Corto">Corto</option>
+                                    <option value="@HairLength.Medio">Medio</option>
+                                    <option value="@HairLength.Largo">Largo</option>
+                                    <option value="@HairLength.MuyLargo">Muy largo</option>
+                                </select>
+                                <div class="text-muted" style="font-size:11px;margin-top:4px;">Un servicio elegido cambia de precio/duracion segun el largo. Es obligatorio.</div>
+                            </div>
+                        }
                         <div style="background:var(--muted);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
                             <div style="display:flex;justify-content:space-between;font-size:13px;"><span class="text-muted">Duracion</span><strong>@TotalDuration min</strong></div>
                             <div style="display:flex;justify-content:space-between;font-size:13px;"><span class="text-muted">Total estimado</span><strong style="color:var(--primary);">$@TotalValue.ToString("N0")</strong></div>
@@ -166,7 +180,7 @@
                     <button class="btn btn-outline-danger" style="margin-right:auto;" @onclick="CancelAsync" disabled="@_busy">Cancelar cita</button>
                 }
                 <button class="btn btn-outline-secondary" @onclick="Close">Cerrar</button>
-                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(_busy || _chosen.Count == 0 || string.IsNullOrWhiteSpace(_clientName))">Guardar cita</button>
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(_busy || _chosen.Count == 0 || string.IsNullOrWhiteSpace(_clientName) || (NeedsHair && _hairLength is null))">Guardar cita</button>
             </div>
           </div>
           <ClientChat Phone="@_clientPhone" ContactName="@_clientName" />
@@ -204,6 +218,7 @@
     private string? _notes;
     private List<ServiceOptionDto> _options = new();
     private List<Guid> _chosen = new();
+    private HairLength? _hairLength;
     private Guid _svcToAdd;
     private List<BookingChainStep> _chain = new();
     private Guid _chainResource;
@@ -218,7 +233,7 @@
         _appointmentId = null; _reschedule = false; _freeSlot = false; _rescheduledFromId = null; _resourceId = resourceId; _date = date; _startTime = time;
         _clientName = ""; _clientPhone = ""; _clientId = null;
         _status = AppointmentStatus.Scheduled; _punctuality = Punctuality.Unknown; _notes = null;
-        _chosen = new(); _chain = new(); _suggestions = new(); _error = null;
+        _chosen = new(); _chain = new(); _suggestions = new(); _error = null; _hairLength = null;
         _slotLabel = $"{resourceName} - {date:yyyy-MM-dd} {time:HH\\:mm}";
         await LoadFieldsAsync(null);
         _options = (await Agenda.GetServiceOptionsAsync(resourceId)).ToList();
@@ -235,7 +250,7 @@
         _appointmentId = appointmentId; _reschedule = false; _freeSlot = false; _rescheduledFromId = null; _resourceId = d.ResourceId; _date = d.Date; _startTime = d.StartTime;
         _clientName = d.ClientName ?? ""; _clientPhone = d.ClientPhone ?? ""; _clientId = d.ClientId;
         _status = d.Status; _punctuality = d.Punctuality; _notes = d.Notes;
-        _chosen = d.ServiceIds.ToList(); _chain = new(); _suggestions = new(); _error = null;
+        _chosen = d.ServiceIds.ToList(); _chain = new(); _suggestions = new(); _error = null; _hairLength = null;
         _slotLabel = $"{d.ResourceName} - {d.Date:yyyy-MM-dd} {d.StartTime:HH\\:mm}";
         _options = (await Agenda.GetServiceOptionsAsync(d.ResourceId)).ToList();
         _svcToAdd = _options.FirstOrDefault()?.Id ?? Guid.Empty;
@@ -253,7 +268,7 @@
         _resourceId = first?.Id ?? Guid.Empty; _date = DateOnly.FromDateTime(DateTime.Today); _startTime = new TimeOnly(10, 0);
         _clientName = name ?? ""; _clientPhone = phone ?? ""; _clientId = clientId;
         _status = AppointmentStatus.Scheduled; _punctuality = Punctuality.Unknown; _notes = null;
-        _chosen = new(); _chain = new(); _suggestions = new(); _error = null;
+        _chosen = new(); _chain = new(); _suggestions = new(); _error = null; _hairLength = null;
         _slotLabel = string.IsNullOrWhiteSpace(name) ? "Nueva atencion" : $"Atencion de {name}";
         await LoadFieldsAsync(null);
         _options = _resourceId == Guid.Empty ? new() : (await Agenda.GetServiceOptionsAsync(_resourceId)).ToList();
@@ -269,7 +284,7 @@
         _resourceId = item.ResourceId; _date = item.Date; _startTime = item.StartTime;
         _clientName = item.ClientName ?? ""; _clientPhone = item.ClientPhone ?? ""; _clientId = item.ClientId;
         _status = AppointmentStatus.Scheduled; _punctuality = Punctuality.Unknown; _notes = null;
-        _chosen = item.ServiceIds.ToList(); _chain = new(); _suggestions = new(); _error = null;
+        _chosen = item.ServiceIds.ToList(); _chain = new(); _suggestions = new(); _error = null; _hairLength = null;
         _slotLabel = $"Reprogramar cita de {item.ClientName}";
         await LoadFieldsAsync(null);
         _options = (await Agenda.GetServiceOptionsAsync(_resourceId)).ToList();
@@ -287,8 +302,23 @@
 
     private void Close() => _visible = false;
 
-    private int TotalDuration => _chosen.Sum(id => _options.FirstOrDefault(o => o.Id == id)?.DurationMinutes ?? 0);
-    private decimal TotalValue => _chosen.Sum(id => _options.FirstOrDefault(o => o.Id == id)?.Price ?? 0m);
+    // Un servicio puede variar precio/duracion por largo de cabello: si alguno de los elegidos trae tarifas
+    // por largo, hay que capturar el largo (obligatorio) y los totales se calculan con el tier seleccionado.
+    private bool NeedsHair => _chosen.Any(id => _options.FirstOrDefault(o => o.Id == id)?.Tiers is { Count: > 0 });
+
+    private (int Dur, decimal Price) Effective(ServiceOptionDto? o)
+    {
+        if (o is null) { return (0, 0m); }
+        if (o.Tiers is { Count: > 0 } && _hairLength is HairLength hl)
+        {
+            var tier = o.Tiers.FirstOrDefault(t => t.Length == hl);
+            if (tier is not null) { return (tier.DurationMinutes, tier.Price); }
+        }
+        return (o.DurationMinutes, o.Price);
+    }
+
+    private int TotalDuration => _chosen.Sum(id => Effective(_options.FirstOrDefault(o => o.Id == id)).Dur);
+    private decimal TotalValue => _chosen.Sum(id => Effective(_options.FirstOrDefault(o => o.Id == id)).Price);
 
     private void AddService() { if (_svcToAdd != Guid.Empty) { _chosen.Add(_svcToAdd); } }
     private void RemoveService(int i) { if (i >= 0 && i < _chosen.Count) { _chosen.RemoveAt(i); } }
@@ -320,7 +350,7 @@
             var req = new BookingRequest(_appointmentId, _resourceId, _date, _startTime, _clientName, _clientPhone, _clientId,
                 _chosen.ToList(), _status, _punctuality, _notes,
                 _appointmentId is null ? _chain.ToList() : Array.Empty<BookingChainStep>(), Array.Empty<BookingChatLine>(), _rescheduledFromId,
-                new Dictionary<string, string?>(_fieldValues));
+                new Dictionary<string, string?>(_fieldValues), _hairLength);
             var res = await Agenda.SaveBookingAsync(req, await ActorAsync());
             if (!res.Success) { _error = res.Error ?? "No se pudo guardar."; return; }
             _visible = false;

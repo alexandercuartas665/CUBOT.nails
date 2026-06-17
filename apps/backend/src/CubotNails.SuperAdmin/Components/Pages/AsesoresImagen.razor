@@ -124,6 +124,21 @@ else
                             <label class="form-label">Notas</label>
                             <textarea class="form-control" rows="2" @bind="_form.Notes"></textarea>
                         </div>
+                        <div class="field">
+                            <label class="form-label">Modo de agenda</label>
+                            <select class="form-control" @bind="_form.SchedulingMode">
+                                <option value="@SchedulingMode.SlotGrid">Por turnos (cupos fijos)</option>
+                                <option value="@SchedulingMode.Duration">Por duracion del servicio</option>
+                            </select>
+                            <div class="text-muted" style="font-size:11px;margin-top:4px;">
+                                Por turnos: ofrece cupos cada N min. Por duracion: ofrece el proximo hueco donde quepa el servicio completo (segun el largo).
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Buffer entre citas (min)</label>
+                            <input class="form-control" type="number" min="0" step="5" @bind="_form.BufferMinutes" />
+                            <div class="text-muted" style="font-size:11px;margin-top:4px;">Margen de limpieza/preparacion reservado despues de cada cita.</div>
+                        </div>
                     </div>
                     <div>
                         <label class="form-label">Servicios habilitados y precio personalizado</label>
@@ -208,6 +223,8 @@ else
             Color = string.IsNullOrWhiteSpace(a?.Color) ? "#A03DC9" : a!.Color!,
             Notes = a?.Notes,
             SedeId = a?.SedeId,
+            SchedulingMode = a?.SchedulingMode ?? SchedulingMode.SlotGrid,
+            BufferMinutes = a?.BufferMinutes ?? 0,
             Links = _services.Select(s => new LinkRow
             {
                 ServiceId = s.Id,
@@ -230,7 +247,7 @@ else
             var links = _form.Links.Where(r => r.Enabled)
                 .Select(r => new ResourceLinkInput(r.ServiceId, _form.Kind == ResourceKind.Image ? r.PriceOverride : null))
                 .ToList();
-            var req = new SaveResourceRequest(_form.Name, _form.Kind, _form.Color, _form.Phone, _form.Notes, links, _form.SedeId);
+            var req = new SaveResourceRequest(_form.Name, _form.Kind, _form.Color, _form.Phone, _form.Notes, links, _form.SedeId, _form.SchedulingMode, Math.Max(0, _form.BufferMinutes));
             var result = _editingId is Guid id ? await Resources.UpdateAsync(id, req, await ActorAsync()) : await Resources.CreateAsync(req, await ActorAsync());
             if (result is null) { _error = "No se pudo guardar."; return; }
             _formOpen = false;
@@ -272,6 +289,8 @@ else
         public string Color { get; set; } = "#A03DC9";
         public string? Notes { get; set; }
         public Guid? SedeId { get; set; }
+        public SchedulingMode SchedulingMode { get; set; } = SchedulingMode.SlotGrid;
+        public int BufferMinutes { get; set; }
         public List<LinkRow> Links { get; set; } = new();
     }
 

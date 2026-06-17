@@ -7,7 +7,8 @@ namespace CubotNails.Application.Tenancy;
 
 // ===== DTOs de lectura para las vistas =====
 
-public sealed record ServiceOptionDto(Guid Id, string Name, int DurationMinutes, decimal Price);
+public sealed record ServiceTierOption(HairLength Length, int DurationMinutes, decimal Price);
+public sealed record ServiceOptionDto(Guid Id, string Name, int DurationMinutes, decimal Price, IReadOnlyList<ServiceTierOption>? Tiers = null);
 public sealed record ClientSuggestionDto(Guid Id, string Name, string Phone);
 
 public sealed record DayShiftDto(TimeOnly Start, TimeOnly End, int SlotMinutes);
@@ -41,7 +42,7 @@ public sealed record BookingRequest(Guid? AppointmentId, Guid ResourceId, DateOn
     string ClientName, string? ClientPhone, Guid? ClientId, IReadOnlyList<Guid> ServiceIds,
     AppointmentStatus Status, Punctuality Punctuality, string? Notes,
     IReadOnlyList<BookingChainStep> ChainSteps, IReadOnlyList<BookingChatLine> Chat, Guid? RescheduledFromId = null,
-    IReadOnlyDictionary<string, string?>? FieldValues = null);
+    IReadOnlyDictionary<string, string?>? FieldValues = null, HairLength? HairLength = null);
 public sealed record BookingResult(bool Success, Guid? AppointmentId, string? Error);
 public sealed record RescheduleItemDto(Guid AppointmentId, Guid ResourceId, string ResourceName, DateOnly Date, TimeOnly StartTime,
     Guid? ClientId, string? ClientName, string? ClientPhone, string ServicesText, IReadOnlyList<Guid> ServiceIds, DateTimeOffset? CancelledAt);
@@ -59,6 +60,12 @@ public interface IAgendaService
     Task<WeekDto> GetWeekAsync(DateOnly weekStart, Guid? resourceFilter, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<MonthDayDto>> GetMonthAvailabilityAsync(Guid resourceId, int year, int month, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SlotDto>> GetDaySlotsAsync(Guid resourceId, DateOnly date, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Horas de inicio LIBRES donde cabe el servicio completo (duracion por largo) sin cruzarse con otra cita,
+    /// respetando el buffer y el modo de agenda del asesor (grilla o continuo por duracion). Si el largo no se
+    /// conoce para un servicio que varia por largo, estima con el tier mas largo (conservador).
+    /// </summary>
+    Task<IReadOnlyList<TimeOnly>> GetAvailableStartsAsync(Guid resourceId, DateOnly date, IReadOnlyList<Guid> serviceIds, HairLength? hairLength, CancellationToken cancellationToken = default);
     Task<AppointmentDetailDto?> GetAppointmentAsync(Guid id, CancellationToken cancellationToken = default);
     Task<BookingResult> SaveBookingAsync(BookingRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
     Task<bool> CancelAppointmentAsync(Guid id, Guid actorUserId, CancellationToken cancellationToken = default);
@@ -111,12 +118,18 @@ public sealed class AgendaService : IAgendaService
         var links = await _db.ResourceServiceLinks.AsNoTracking().Where(l => l.ResourceId == resourceId).ToListAsync(cancellationToken);
         var services = await _db.Services.AsNoTracking().Where(s => s.IsActive).ToListAsync(cancellationToken);
         var svcById = services.ToDictionary(s => s.Id);
+        var tiersBySvc = (await _db.ServicePriceTiers.AsNoTracking().ToListAsync(cancellationToken))
+            .GroupBy(t => t.ServiceId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ServiceTierOption>)g.OrderBy(t => t.Length)
+                .Select(t => new ServiceTierOption(t.Length, t.DurationMinutes, t.Price)).ToList());
+
+        IReadOnlyList<ServiceTierOption>? TiersOf(Guid sid) => tiersBySvc.TryGetValue(sid, out var ts) && ts.Count > 0 ? ts : null;
 
         if (links.Count == 0)
         {
             // Sin servicios habilitados: ofrecer todo el catalogo activo a precio base.
             return services.OrderBy(s => s.Name)
-                .Select(s => new ServiceOptionDto(s.Id, s.Name, s.DurationMinutes, s.Price)).ToList();
+                .Select(s => new ServiceOptionDto(s.Id, s.Name, s.DurationMinutes, s.Price, TiersOf(s.Id))).ToList();
         }
 
         var options = new List<ServiceOptionDto>();
@@ -124,7 +137,7 @@ public sealed class AgendaService : IAgendaService
         {
             if (!svcById.TryGetValue(l.ServiceId, out var s)) { continue; }
             var price = resource?.Kind == ResourceKind.Image && l.PriceOverride is decimal o ? o : s.Price;
-            options.Add(new ServiceOptionDto(s.Id, s.Name, s.DurationMinutes, price));
+            options.Add(new ServiceOptionDto(s.Id, s.Name, s.DurationMinutes, price, TiersOf(s.Id)));
         }
         return options.OrderBy(o => o.Name).ToList();
     }
@@ -232,6 +245,12 @@ public sealed class AgendaService : IAgendaService
         var servicesText = await BuildServicesTextAsync(appts.Select(a => a.Id).ToList(), cancellationToken);
         var clientNames = await ClientNamesAsync(appts, cancellationToken);
 
+        // Una cita ocupa todo su intervalo [inicio, inicio + duracion + buffer), no solo su hora de inicio:
+        // un cupo de la grilla esta ocupado si cae dentro del intervalo de alguna cita (no solo si coincide
+        // el inicio). Asi un servicio de 45 min a las 9:00 marca tambien el cupo de las 9:30 como ocupado.
+        Appointment? Covering(TimeOnly t) => appts.FirstOrDefault(a =>
+            a.StartTime <= t && t < a.StartTime.AddMinutes(a.DurationMinutes + a.BufferMinutes));
+
         var slots = new List<SlotDto>();
         foreach (var sh in shifts)
         {
@@ -239,7 +258,7 @@ public sealed class AgendaService : IAgendaService
             var t = sh.StartTime;
             for (var i = 0; i < n; i++)
             {
-                var appt = appts.FirstOrDefault(a => a.StartTime == t);
+                var appt = Covering(t);
                 if (appt is null)
                 {
                     slots.Add(new SlotDto(t, false, null, null, null, null));
@@ -254,6 +273,64 @@ public sealed class AgendaService : IAgendaService
             }
         }
         return slots;
+    }
+
+    public async Task<IReadOnlyList<TimeOnly>> GetAvailableStartsAsync(Guid resourceId, DateOnly date, IReadOnlyList<Guid> serviceIds, HairLength? hairLength, CancellationToken cancellationToken = default)
+    {
+        var duration = await EstimateDurationAsync(serviceIds, hairLength, cancellationToken);
+        if (duration <= 0) { duration = 1; }
+
+        var resource = await _db.Resources.AsNoTracking().FirstOrDefaultAsync(r => r.Id == resourceId, cancellationToken);
+        var buffer = resource?.BufferMinutes ?? 0;
+        var mode = resource?.SchedulingMode ?? SchedulingMode.SlotGrid;
+        var shifts = await _db.ShiftTemplates.AsNoTracking()
+            .Where(s => s.ResourceId == resourceId && s.DayOfWeek == date.DayOfWeek)
+            .OrderBy(s => s.StartTime).ToListAsync(cancellationToken);
+        var appts = await _db.Appointments.AsNoTracking()
+            .Where(a => a.ResourceId == resourceId && a.AppointmentDate == date && a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.Rescheduled)
+            .ToListAsync(cancellationToken);
+        var blocks = appts.Select(a => (Start: a.StartTime, End: a.StartTime.AddMinutes(a.DurationMinutes + a.BufferMinutes))).ToList();
+
+        var starts = new List<TimeOnly>();
+        foreach (var sh in shifts)
+        {
+            // En modo Duration el paso es fino (hasta 15 min) para ofrecer "el proximo hueco"; en SlotGrid, la grilla.
+            var step = mode == SchedulingMode.Duration
+                ? Math.Clamp(sh.SlotMinutes <= 0 ? 15 : Math.Min(sh.SlotMinutes, 15), 5, 60)
+                : (sh.SlotMinutes <= 0 ? 30 : sh.SlotMinutes);
+            var endSpan = sh.EndTime.ToTimeSpan();
+            for (var t = sh.StartTime; t.ToTimeSpan().Add(TimeSpan.FromMinutes(duration)) <= endSpan; t = t.AddMinutes(step))
+            {
+                var newEnd = t.AddMinutes(duration + buffer);
+                var overlaps = blocks.Any(b => t < b.End && b.Start < newEnd);
+                if (!overlaps) { starts.Add(t); }
+            }
+        }
+        return starts.Distinct().OrderBy(t => t).ToList();
+    }
+
+    // Duracion total estimada de un conjunto de servicios: tier por largo si se conoce; si el servicio varia por
+    // largo y no se conoce, el tier mas largo (conservador, para que el hueco ofrecido siempre alcance); si no
+    // tiene tarifas por largo, la duracion base.
+    private async Task<int> EstimateDurationAsync(IReadOnlyList<Guid> serviceIds, HairLength? hairLength, CancellationToken cancellationToken)
+    {
+        if (serviceIds is null || serviceIds.Count == 0) { return 0; }
+        var baseDur = await _db.Services.AsNoTracking().Where(s => serviceIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.DurationMinutes, cancellationToken);
+        var tiers = await _db.ServicePriceTiers.AsNoTracking().Where(t => serviceIds.Contains(t.ServiceId)).ToListAsync(cancellationToken);
+        var tiersBySvc = tiers.GroupBy(t => t.ServiceId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var total = 0;
+        foreach (var sid in serviceIds)
+        {
+            if (tiersBySvc.TryGetValue(sid, out var ts) && ts.Count > 0)
+            {
+                if (hairLength is HairLength hl && ts.FirstOrDefault(t => t.Length == hl) is { } tier) { total += tier.DurationMinutes; }
+                else { total += ts.Max(t => t.DurationMinutes); }
+            }
+            else if (baseDur.TryGetValue(sid, out var d)) { total += d; }
+        }
+        return total;
     }
 
     public async Task<AppointmentDetailDto?> GetAppointmentAsync(Guid id, CancellationToken cancellationToken = default)
@@ -284,12 +361,13 @@ public sealed class AgendaService : IAgendaService
         var now = _clock.GetUtcNow();
         var client = await ResolveClientAsync(tenantId, request, cancellationToken);
 
-        // Precios efectivos del recurso principal para los servicios elegidos.
-        var prices = await PriceSnapshotsAsync(request.ResourceId, request.ServiceIds, cancellationToken);
-        var durations = await _db.Services.AsNoTracking().Where(s => request.ServiceIds.Contains(s.Id))
-            .ToDictionaryAsync(s => s.Id, s => s.DurationMinutes, cancellationToken);
-        var totalDuration = request.ServiceIds.Sum(sid => durations.TryGetValue(sid, out var d) ? d : 0);
-        var totalValue = request.ServiceIds.Sum(sid => prices.TryGetValue(sid, out var p) ? p : 0m);
+        // Precio y duracion efectivos por servicio: tarifa por LARGO de cabello cuando el servicio la define
+        // (gate: el largo es obligatorio para esos servicios), si no, precio/duracion base del recurso.
+        var (lines, gateError) = await ResolveServiceLinesAsync(request.ResourceId, request.ServiceIds, request.HairLength, cancellationToken);
+        if (gateError is not null) { return new BookingResult(false, null, gateError); }
+        var prices = lines.ToDictionary(kv => kv.Key, kv => kv.Value.Price);
+        var totalDuration = request.ServiceIds.Sum(sid => lines.TryGetValue(sid, out var ln) ? ln.DurationMinutes : 0);
+        var totalValue = request.ServiceIds.Sum(sid => lines.TryGetValue(sid, out var ln) ? ln.Price : 0m);
 
         // Buffer (margen) por recurso: snapshot al reservar; entra en el intervalo del anti-solapamiento.
         var resourceIds = new List<Guid> { request.ResourceId };
@@ -497,19 +575,45 @@ public sealed class AgendaService : IAgendaService
         return created;
     }
 
-    private async Task<Dictionary<Guid, decimal>> PriceSnapshotsAsync(Guid resourceId, IReadOnlyList<Guid> serviceIds, CancellationToken cancellationToken)
+    private sealed record ServiceLine(int DurationMinutes, decimal Price);
+
+    /// <summary>
+    /// Resuelve precio y duracion por servicio. Si el servicio define tarifas por largo (ServicePriceTier),
+    /// el largo es OBLIGATORIO (decision ADR-0009): sin largo devuelve un mensaje de gate y no se reserva;
+    /// con largo usa el tier correspondiente (o el base si ese largo no tiene tier). Sin tarifas por largo,
+    /// usa el precio base (con override del asesor de imagen) y la duracion base.
+    /// </summary>
+    private async Task<(Dictionary<Guid, ServiceLine> Lines, string? GateError)> ResolveServiceLinesAsync(
+        Guid resourceId, IReadOnlyList<Guid> serviceIds, HairLength? hairLength, CancellationToken cancellationToken)
     {
         var resource = await _db.Resources.AsNoTracking().FirstOrDefaultAsync(r => r.Id == resourceId, cancellationToken);
         var links = await _db.ResourceServiceLinks.AsNoTracking().Where(l => l.ResourceId == resourceId).ToListAsync(cancellationToken);
         var linkBySvc = links.ToDictionary(l => l.ServiceId);
         var services = await _db.Services.AsNoTracking().Where(s => serviceIds.Contains(s.Id)).ToListAsync(cancellationToken);
-        var result = new Dictionary<Guid, decimal>();
+        var tiers = await _db.ServicePriceTiers.AsNoTracking().Where(t => serviceIds.Contains(t.ServiceId)).ToListAsync(cancellationToken);
+        var tiersBySvc = tiers.GroupBy(t => t.ServiceId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var lines = new Dictionary<Guid, ServiceLine>();
         foreach (var s in services)
         {
+            if (tiersBySvc.TryGetValue(s.Id, out var svcTiers) && svcTiers.Count > 0)
+            {
+                if (hairLength is not HairLength hl)
+                {
+                    return (lines, $"El servicio \"{s.Name}\" cambia de precio y duracion segun el largo del cabello. Clasifica el largo de la clienta (foto) antes de reservar.");
+                }
+                var tier = svcTiers.FirstOrDefault(t => t.Length == hl);
+                if (tier is not null)
+                {
+                    lines[s.Id] = new ServiceLine(tier.DurationMinutes, tier.Price);
+                    continue;
+                }
+                // Ese largo no tiene tier definido: cae al precio/duracion base.
+            }
             var price = resource?.Kind == ResourceKind.Image && linkBySvc.TryGetValue(s.Id, out var l) && l.PriceOverride is decimal o ? o : s.Price;
-            result[s.Id] = price;
+            lines[s.Id] = new ServiceLine(s.DurationMinutes, price);
         }
-        return result;
+        return (lines, null);
     }
 
     private void AddServiceItems(Guid appointmentId, Guid tenantId, IReadOnlyList<Guid> serviceIds, IReadOnlyDictionary<Guid, decimal> prices)

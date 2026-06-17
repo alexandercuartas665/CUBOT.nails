@@ -6,9 +6,11 @@ using Microsoft.EntityFrameworkCore;
 namespace CubotNails.Application.Tenancy;
 
 public sealed record ResourceLinkDto(Guid ServiceId, string ServiceName, decimal BasePrice, int DurationMinutes, decimal? PriceOverride, decimal EffectivePrice);
-public sealed record ResourceDto(Guid Id, string Name, ResourceKind Kind, string? Color, string? Phone, string? Notes, bool IsActive, IReadOnlyList<ResourceLinkDto> Services, Guid? SedeId = null, string? SedeName = null);
+public sealed record ResourceDto(Guid Id, string Name, ResourceKind Kind, string? Color, string? Phone, string? Notes, bool IsActive, IReadOnlyList<ResourceLinkDto> Services, Guid? SedeId = null, string? SedeName = null,
+    SchedulingMode SchedulingMode = SchedulingMode.SlotGrid, int BufferMinutes = 0);
 public sealed record ResourceLinkInput(Guid ServiceId, decimal? PriceOverride);
-public sealed record SaveResourceRequest(string Name, ResourceKind Kind, string? Color, string? Phone, string? Notes, IReadOnlyList<ResourceLinkInput> Services, Guid? SedeId = null);
+public sealed record SaveResourceRequest(string Name, ResourceKind Kind, string? Color, string? Phone, string? Notes, IReadOnlyList<ResourceLinkInput> Services, Guid? SedeId = null,
+    SchedulingMode SchedulingMode = SchedulingMode.SlotGrid, int BufferMinutes = 0);
 
 /// <summary>
 /// Asesores de imagen y estaciones del salon (Resource) con sus servicios habilitados y precios
@@ -57,6 +59,8 @@ public sealed class ResourceService : IResourceService
             Phone = Clean(request.Phone),
             Notes = Clean(request.Notes),
             SedeId = request.SedeId,
+            SchedulingMode = request.SchedulingMode,
+            BufferMinutes = Math.Max(0, request.BufferMinutes),
             IsActive = true
         };
         _db.Resources.Add(resource);
@@ -80,6 +84,8 @@ public sealed class ResourceService : IResourceService
         resource.Phone = Clean(request.Phone);
         resource.Notes = Clean(request.Notes);
         resource.SedeId = request.SedeId;
+        resource.SchedulingMode = request.SchedulingMode;
+        resource.BufferMinutes = Math.Max(0, request.BufferMinutes);
 
         var existing = await _db.ResourceServiceLinks.Where(l => l.ResourceId == id).ToListAsync(cancellationToken);
         _db.ResourceServiceLinks.RemoveRange(existing);
@@ -145,7 +151,7 @@ public sealed class ResourceService : IResourceService
             .OrderBy(l => l.ServiceName)
             .ToList();
         string? sedeName = r.SedeId is Guid sid && sedeNames.TryGetValue(sid, out var sn) ? sn : null;
-        return new ResourceDto(r.Id, r.Name, r.Kind, r.Color, r.Phone, r.Notes, r.IsActive, linkDtos, r.SedeId, sedeName);
+        return new ResourceDto(r.Id, r.Name, r.Kind, r.Color, r.Phone, r.Notes, r.IsActive, linkDtos, r.SedeId, sedeName, r.SchedulingMode, r.BufferMinutes);
     }
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

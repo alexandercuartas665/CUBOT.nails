@@ -12,8 +12,8 @@ public sealed record AgendaToolResult(string Json, bool BookingCreated);
 /// Catalogo de herramientas (function calling) que el agente de IA puede invocar para operar la agenda
 /// del salon: listar asesores de imagen, consultar precios de servicios, consultar disponibilidad real y
 /// reservar una cita (incluyendo doble turno / cadena multi-estacion). Toda reserva pasa por
-/// IAgendaService.SaveBookingAsync, asi que comparte el ANTI-OVERBOOKING (indice unico + captura de
-/// violacion): la IA NO tiene atajos que salten esa defensa.
+/// IAgendaService.SaveBookingAsync, asi que comparte el ANTI-OVERBOOKING por solapamiento (exclusion
+/// constraint + captura de violacion) y el gate de largo de cabello: la IA NO tiene atajos que los salten.
 /// </summary>
 public interface IAgendaToolset : IAgentToolset
 {
@@ -64,12 +64,16 @@ public sealed class AgendaToolset : IAgendaToolset
 
         new AiToolSpec(
             "consultar_disponibilidad",
-            "Devuelve los horarios LIBRES de un asesor para una fecha concreta. Ofrece al cliente UNICAMENTE los cupos que esta herramienta reporta como libres; nunca inventes horarios.",
-            """{"type":"object","properties":{"asesor":{"type":"string","description":"Nombre o id del asesor"},"fecha":{"type":"string","description":"Fecha en formato AAAA-MM-DD"}},"required":["asesor","fecha"],"additionalProperties":false}"""),
+            "Devuelve los horarios LIBRES de un asesor para una fecha concreta. Si pasas 'servicios' (y 'largo' cuando el servicio varia por largo), devuelve solo los inicios donde cabe el servicio COMPLETO segun su duracion (asesores que agendan por duracion) respetando el margen entre citas. Ofrece al cliente UNICAMENTE los horarios que esta herramienta reporta; nunca inventes horarios.",
+            """{"type":"object","properties":{"asesor":{"type":"string","description":"Nombre o id del asesor"},"fecha":{"type":"string","description":"Fecha en formato AAAA-MM-DD"},"servicios":{"type":"array","items":{"type":"string"},"description":"Servicios a realizar (opcional; mejora la disponibilidad segun la duracion real)"},"largo":{"type":"string","description":"Largo de cabello (corto/medio/largo/muy largo) si el servicio varia por largo"}},"required":["asesor","fecha"],"additionalProperties":false}"""),
 
         new AiToolSpec(
             "reservar_cita",
-            "Separa (reserva) una cita. Usala SOLO cuando el cliente haya confirmado asesor, fecha, hora y servicio. Para DOBLE TURNO (el cliente pasa por dos estaciones el mismo dia, ej. lavado y luego corte con otro asesor) agrega el segundo paso en 'cadena'. El sistema valida que el horario siga libre.",
+            "Separa (reserva) una cita. Usala SOLO cuando el cliente haya confirmado asesor, fecha, hora y servicio. " +
+            "Si el servicio cambia de precio/duracion segun el largo del cabello, primero determina el largo con " +
+            "clasificar_largo_cabello y pasa ese valor en 'largo' (corto/medio/largo/muy largo); sin el, la reserva se " +
+            "rechaza. Para DOBLE TURNO (el cliente pasa por dos estaciones el mismo dia, ej. lavado y luego corte con " +
+            "otro asesor) agrega el segundo paso en 'cadena'. El sistema valida que el horario siga libre y no se cruce con otra cita.",
             """
             {
               "type":"object",
@@ -80,6 +84,7 @@ public sealed class AgendaToolset : IAgendaToolset
                 "cliente_nombre":{"type":"string","description":"Nombre del cliente"},
                 "cliente_telefono":{"type":"string","description":"Telefono del cliente (opcional)"},
                 "servicios":{"type":"array","items":{"type":"string"},"description":"Nombres o ids de los servicios a realizar"},
+                "largo":{"type":"string","description":"Largo de cabello detectado (corto/medio/largo/muy largo). Obligatorio si el servicio varia por largo."},
                 "notas":{"type":"string","description":"Notas u observaciones (opcional)"},
                 "cadena":{"type":"array","description":"Pasos adicionales para doble turno; cada elemento es un asesor y la hora en que continua","items":{"type":"object","properties":{"asesor":{"type":"string"},"hora":{"type":"string","description":"HH:mm 24h"}},"required":["asesor","hora"]}}
               },
@@ -190,6 +195,28 @@ public sealed class AgendaToolset : IAgendaToolset
         var res = await ResolveResourceAsync(asesor!, ct);
         if (res is null) { return Err($"No encontre el asesor '{asesor}'. Usa listar_asesores para ver los nombres exactos."); }
 
+        // Si el agente indica servicios, ofrecer inicios donde cabe el servicio COMPLETO (duracion por largo),
+        // respetando modo de agenda y buffer. Si no, caer a la grilla de cupos (consciente de solapamiento).
+        var serviciosTokens = StrArray(args, "servicios");
+        if (serviciosTokens.Count > 0)
+        {
+            var (serviceIds, unresolved) = await ResolveServicesAsync(serviciosTokens, ct);
+            if (serviceIds.Count > 0)
+            {
+                var hair = HairLengthFromString(Str(args, "largo"));
+                var starts = await _agenda.GetAvailableStartsAsync(res.Id, date, serviceIds, hair, ct);
+                return Ok(new
+                {
+                    asesor = res.Name,
+                    fecha = date.ToString("yyyy-MM-dd"),
+                    libres = starts.Select(t => t.ToString("HH\\:mm")).ToArray(),
+                    mensaje = starts.Count == 0
+                        ? "No hay un hueco libre que alcance para ese servicio completo ese dia; ofrece otra fecha."
+                        : $"Hay {starts.Count} horarios donde cabe el servicio completo."
+                });
+            }
+        }
+
         var slots = await _agenda.GetDaySlotsAsync(res.Id, date, ct);
         var libres = slots.Where(s => !s.Occupied).Select(s => s.Time.ToString("HH\\:mm")).ToArray();
         var ocupados = slots.Where(s => s.Occupied).Select(s => s.Time.ToString("HH\\:mm")).ToArray();
@@ -244,6 +271,7 @@ public sealed class AgendaToolset : IAgendaToolset
 
         var phone = Str(args, "cliente_telefono");
         var notas = Str(args, "notas");
+        var hairLength = HairLengthFromString(Str(args, "largo"));
         var doble = chainSteps.Count > 0;
 
         // Modo sugerencia: no se escribe en la agenda; se registra la solicitud para que un asesor la confirme.
@@ -277,7 +305,8 @@ public sealed class AgendaToolset : IAgendaToolset
             Notes: string.IsNullOrWhiteSpace(notas) ? null : notas!.Trim(),
             ChainSteps: chainSteps,
             Chat: Array.Empty<BookingChatLine>(),
-            RescheduledFromId: null);
+            RescheduledFromId: null,
+            HairLength: hairLength);
 
         var result = await _agenda.SaveBookingAsync(request, actorUserId, ct);
         if (!result.Success)
@@ -446,6 +475,21 @@ public sealed class AgendaToolset : IAgendaToolset
         ResourceKind.Station => "Estacion / cabina",
         _ => k.ToString()
     };
+
+    // Mapea el largo de cabello en texto (corto/medio/largo/muy largo) al enum del dominio.
+    private static HairLength? HairLengthFromString(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) { return null; }
+        var k = Normalize(s);
+        return k switch
+        {
+            "corto" => HairLength.Corto,
+            "medio" or "mediano" => HairLength.Medio,
+            "largo" => HairLength.Largo,
+            "muy largo" or "muylargo" or "extra largo" or "extralargo" => HairLength.MuyLargo,
+            _ => Enum.TryParse<HairLength>(s, true, out var e) ? e : null
+        };
+    }
 
     private static string StatusLabel(AppointmentStatus s) => s switch
     {
