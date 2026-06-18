@@ -42,7 +42,8 @@ public sealed record BookingRequest(Guid? AppointmentId, Guid ResourceId, DateOn
     string ClientName, string? ClientPhone, Guid? ClientId, IReadOnlyList<Guid> ServiceIds,
     AppointmentStatus Status, Punctuality Punctuality, string? Notes,
     IReadOnlyList<BookingChainStep> ChainSteps, IReadOnlyList<BookingChatLine> Chat, Guid? RescheduledFromId = null,
-    IReadOnlyDictionary<string, string?>? FieldValues = null, HairLength? HairLength = null);
+    IReadOnlyDictionary<string, string?>? FieldValues = null, HairLength? HairLength = null,
+    BookingChannel Channel = BookingChannel.Reception);
 public sealed record BookingResult(bool Success, Guid? AppointmentId, string? Error);
 public sealed record RescheduleItemDto(Guid AppointmentId, Guid ResourceId, string ResourceName, DateOnly Date, TimeOnly StartTime,
     Guid? ClientId, string? ClientName, string? ClientPhone, string ServicesText, IReadOnlyList<Guid> ServiceIds, DateTimeOffset? CancelledAt);
@@ -409,7 +410,7 @@ public sealed class AgendaService : IAgendaService
             TenantId = tenantId, ResourceId = request.ResourceId, AppointmentDate = request.Date, StartTime = request.StartTime,
             DurationMinutes = totalDuration, BufferMinutes = BufferOf(request.ResourceId),
             ClientId = client?.Id, Status = request.Status, Punctuality = request.Punctuality,
-            Channel = BookingChannel.Reception, EstimatedValue = totalValue,
+            Channel = request.Channel, EstimatedValue = totalValue,
             Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
             FieldValuesJson = SalonFieldJson.Serialize(request.FieldValues),
             ChainId = chainId, ChainSequence = chainId is null ? null : 1, ChainTotal = chainId is null ? null : chainTotal,

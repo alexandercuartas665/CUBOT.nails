@@ -5,5 +5,6 @@ public enum BookingChannel
 {
     Reception,
     WhatsApp,
-    AI
+    AI,
+    Online
 }

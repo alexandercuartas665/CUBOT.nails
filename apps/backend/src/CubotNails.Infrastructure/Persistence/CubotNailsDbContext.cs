@@ -167,6 +167,8 @@ public class CubotNailsDbContext : DbContext, IApplicationDbContext, IDataProtec
             b.Property(x => x.Country).HasMaxLength(80);
             b.Property(x => x.Currency).HasMaxLength(10);
             b.Property(x => x.LogoUrl).HasMaxLength(500);
+            b.Property(x => x.PublicBookingToken).HasMaxLength(64);
+            b.HasIndex(x => x.PublicBookingToken).IsUnique().HasFilter("public_booking_token IS NOT NULL");
         });
 
         modelBuilder.Entity<SaasPlan>(b =>

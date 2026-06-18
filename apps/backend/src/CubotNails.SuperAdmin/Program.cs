@@ -66,6 +66,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<CubotNails.SuperAd
 builder.Services.AddSingleton<CubotNails.Application.Tenancy.IDevTunnel, CubotNails.SuperAdmin.RealTime.CloudflaredTunnel>();
 // Sembrador one-shot del agente TravelFans (ver /admin/seed-travelfans).
 builder.Services.AddScoped<CubotNails.SuperAdmin.Seeders.TravelFansAgentSeeder>();
+// Reserva publica por link (/r/{token}): resuelve tenant por token y reusa el motor bajo ambient tenant.
+builder.Services.AddScoped<CubotNails.SuperAdmin.Services.IPublicBookingService, CubotNails.SuperAdmin.Services.PublicBookingService>();
 
 var app = builder.Build();
 

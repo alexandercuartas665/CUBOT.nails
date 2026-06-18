@@ -16,4 +16,10 @@ public class Tenant : BaseEntity
     public string? LogoUrl { get; set; }
     public TenantStatus Status { get; set; } = TenantStatus.Trial;
     public TenantKind Kind { get; set; } = TenantKind.Standard;
+
+    /// <summary>Reservas online por link publico habilitadas para este salon.</summary>
+    public bool OnlineBookingEnabled { get; set; }
+
+    /// <summary>Token opaco del link publico de reserva (/r/{token}). Se genera al habilitar. Unico.</summary>
+    public string? PublicBookingToken { get; set; }
 }
