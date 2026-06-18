@@ -22,4 +22,8 @@ public class Tenant : BaseEntity
 
     /// <summary>Token opaco del link publico de reserva (/r/{token}). Se genera al habilitar. Unico.</summary>
     public string? PublicBookingToken { get; set; }
+
+    /// <summary>Base publica del link (ej. https://beauty.cubot.com.co), capturada al habilitar desde la
+    /// consola. La usa el agente (sin request HTTP) para armar el link completo.</summary>
+    public string? PublicBookingBaseUrl { get; set; }
 }

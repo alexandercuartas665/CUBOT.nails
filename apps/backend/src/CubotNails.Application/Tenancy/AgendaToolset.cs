@@ -28,17 +28,19 @@ public sealed class AgendaToolset : IAgendaToolset
     private readonly IResourceService _resources;
     private readonly IServiceCatalogService _services;
     private readonly IClientService _clients;
+    private readonly IOnlineBookingService _onlineBooking;
     private readonly TimeProvider _clock;
 
     // Zona horaria del salon (America/Bogota = UTC-5, sin horario de verano) para filtrar "hoy en adelante".
     private static readonly TimeSpan SalonOffset = TimeSpan.FromHours(-5);
 
-    public AgendaToolset(IAgendaService agenda, IResourceService resources, IServiceCatalogService services, IClientService clients, TimeProvider clock)
+    public AgendaToolset(IAgendaService agenda, IResourceService resources, IServiceCatalogService services, IClientService clients, IOnlineBookingService onlineBooking, TimeProvider clock)
     {
         _agenda = agenda;
         _resources = resources;
         _services = services;
         _clients = clients;
+        _onlineBooking = onlineBooking;
         _clock = clock;
     }
 
@@ -99,6 +101,11 @@ public sealed class AgendaToolset : IAgendaToolset
             """{"type":"object","properties":{"cliente":{"type":"string","description":"Nombre o telefono del cliente"}},"required":["cliente"],"additionalProperties":false}"""),
 
         new AiToolSpec(
+            "obtener_link_reserva",
+            "Devuelve el LINK publico para que el cliente reserve su cita el mismo (elige asesor, servicio y horario en linea). Usalo cuando el cliente quiera agendar y prefieras que reserve por el link, o cuando te lo pidan. Si el salon no tiene reservas online activas, devuelve disponible=false y debes agendar tu por el flujo normal.",
+            """{"type":"object","properties":{},"additionalProperties":false}"""),
+
+        new AiToolSpec(
             "cancelar_cita",
             "Cancela una cita por su cita_id (la obtienes de consultar_citas_cliente). Usala SOLO despues de que el cliente confirme que quiere cancelar. Si la cita es un DOBLE TURNO (cadena), cancela cada paso llamando esta herramienta una vez por cada cita_id de la cadena.",
             """{"type":"object","properties":{"cita_id":{"type":"string","description":"Identificador (uuid) de la cita a cancelar"}},"required":["cita_id"],"additionalProperties":false}""")
@@ -126,6 +133,7 @@ public sealed class AgendaToolset : IAgendaToolset
                 "consultar_disponibilidad" => await AvailabilityAsync(args, cancellationToken),
                 "reservar_cita" => await BookAsync(args, actorUserId, autonomous, cancellationToken),
                 "consultar_citas_cliente" => await ClientAppointmentsAsync(args, cancellationToken),
+                "obtener_link_reserva" => await BookingLinkAsync(cancellationToken),
                 "cancelar_cita" => await CancelAsync(args, actorUserId, autonomous, cancellationToken),
                 _ => Err($"Herramienta desconocida: {toolName}")
             };
@@ -371,6 +379,16 @@ public sealed class AgendaToolset : IAgendaToolset
                 ? "El cliente no tiene citas futuras vigentes (programadas o confirmadas) para cancelar o reprogramar."
                 : $"Se encontraron {totalCitas} cita(s) vigente(s)."
         });
+    }
+
+    private async Task<AgendaToolResult> BookingLinkAsync(CancellationToken ct)
+    {
+        var s = await _onlineBooking.GetAsync(ct);
+        if (!s.Enabled || string.IsNullOrWhiteSpace(s.Link))
+        {
+            return Ok(new { disponible = false, mensaje = "El salon no tiene reservas online por link activas. Agenda tu la cita por el flujo normal." });
+        }
+        return Ok(new { disponible = true, link = s.Link, mensaje = "Comparte este link con el cliente para que reserve su cita (asesor, servicio y horario)." });
     }
 
     private async Task<AgendaToolResult> CancelAsync(JsonElement args, Guid actorUserId, bool autonomous, CancellationToken ct)
