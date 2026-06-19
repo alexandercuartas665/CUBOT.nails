@@ -361,7 +361,7 @@ public sealed class DatabaseSeeder
             ("Productos al detal",
              "cuando el cliente quiere comprar un producto para uso personal, pregunta por un esmalte, crema, kit, lima u otro articulo del catalogo, o por su precio o disponibilidad",
              "El cliente busca un PRODUCTO al detal (uso personal). Atiende asi:\n" +
-             "1) Usa consultar_productos para darle precio real y en que sede esta disponible. NUNCA inventes productos ni precios.\n" +
+             "1) ANTES de describir NADA, invoca SIEMPRE consultar_productos (sin categoria para ver TODO el catalogo real, o con 'busqueda'/'categoria' si pidio algo puntual). Presenta UNICAMENTE los productos y categorias que la herramienta devuelva, con su precio exacto y sede. Esta TERMINANTEMENTE PROHIBIDO afirmar o insinuar que tenemos un tipo de producto (por ejemplo esmaltes o productos para unas) si NO aparece en el resultado: es un Studio especializado en unas pero eso NO significa que venda productos de unas. Si una categoria que pide no tiene resultados, dilo con honestidad y ofrecele lo que SI hay.\n" +
              "2) Captura nombre del cliente, telefono y que producto(s) quiere.\n" +
              "GUION DE CIERRE: cuando tengas nombre, telefono y el producto de interes, confirma con un resumen corto y CIERRA " +
              "registrando el lead con la herramienta crear_lead usando tipo_cliente='productos' y un resumen de lo que quiere. " +
@@ -370,7 +370,7 @@ public sealed class DatabaseSeeder
             ("Productos B2B (empresas)",
              "cuando el cliente quiere comprar al por mayor, suministrar productos para una empresa, salon o negocio, pide una cotizacion empresarial o menciona cantidades grandes",
              "El cliente es B2B: quiere SUMINISTRO o compra al por mayor para una empresa o negocio. Atiende asi:\n" +
-             "1) Usa consultar_productos para precios y existencias reales; para volumen, aclara que un asesor confirma el precio mayorista.\n" +
+             "1) ANTES de describir NADA, invoca SIEMPRE consultar_productos (sin categoria para ver el catalogo real). Ofrece UNICAMENTE lo que devuelva la herramienta; NUNCA afirmes tener un tipo de producto que no aparezca. Para volumen, aclara que un asesor confirma el precio mayorista.\n" +
              "2) Captura nombre del contacto, telefono, nombre de la empresa, que productos y cantidades aproximadas.\n" +
              "GUION DE CIERRE: cuando tengas nombre, telefono y el detalle del pedido, confirma con un resumen y CIERRA con " +
              "crear_lead usando tipo_cliente='b2b', el valor_estimado si lo puedes calcular y un resumen con empresa, productos y " +
@@ -389,7 +389,7 @@ public sealed class DatabaseSeeder
              "El cliente quiere un SERVICIO del salon / asesoria de imagen. Conversa natural, calida y humana, paso a paso: NO sueltes todo de golpe y NO listes precios si no te los piden.\n" +
              "1) Si pregunta QUE servicios hay: PRIMERO invoca SIEMPRE consultar_servicios_precios para obtener los nombres REALES del catalogo (esta PROHIBIDO inventar o suponer servicios). Luego presentalos por NOMBRE con una frase corta de en que consisten, SIN PRECIOS todavia. Cierra invitandola a decirte cual le interesa.\n" +
              "2) Solo cuando pregunte el COSTO/precio o elija un servicio das valores. Si ese servicio trae 'precios_por_largo' (su precio/duracion varia segun el largo), NO des NINGUN precio todavia, NI SIQUIERA un rango: explicale con calidez que el valor depende del largo y pidele una FOTO donde se vea bien su cabello. Solo con la foto usa clasificar_largo_cabello y recien ahi cotiza el PRECIO y la DURACION de ese largo. UNICAMENTE si la clienta dice que NO va a enviar foto, muestrale entonces el rango por largo y pidele que indique su largo. Para servicios SIN variacion por largo, da el precio directo.\n" +
-             "3) Para agendar usa listar_asesores y consultar_disponibilidad; si confirma un cupo, reserva con reservar_cita. Si prefiere agendar ella misma, enviales el link con obtener_link_reserva.\n" +
+             "3) Para AGENDAR la cita, la VIA PRINCIPAL es el LINK de reserva: invoca obtener_link_reserva y comparte el link en tu mensaje para que la clienta elija asesor, servicio y horario en linea (la cita queda directo en la agenda del salon). NO le ofrezcas horarios en el chat. SOLO si obtener_link_reserva devuelve disponible=false (el salon no tiene reservas online activas) agenda tu con listar_asesores y consultar_disponibilidad y reserva con reservar_cita.\n" +
              "4) Captura nombre de la clienta, telefono y el largo de cabello detectado.\n" +
              "GUION DE CIERRE: cuando tengas nombre, telefono y el servicio o intencion clara, ademas de atender la cita, CIERRA " +
              "registrando el lead con crear_lead usando tipo_cliente='estilista' y un resumen del servicio (incluye el largo y el precio cotizado si aplica), para que el " +

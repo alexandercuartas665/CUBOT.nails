@@ -37,8 +37,32 @@ public sealed class OnlineBookingService : IOnlineBookingService
         if (_tenantContext.TenantId is not Guid tenantId) { return new(false, null, null, null); }
         var t = await _db.Tenants.AsNoTracking().FirstOrDefaultAsync(x => x.Id == tenantId, cancellationToken);
         if (t is null) { return new(false, null, null, null); }
-        return Map(t.OnlineBookingEnabled, t.PublicBookingToken, t.PublicBookingBaseUrl);
+        var baseUrl = await EffectiveBaseAsync(t.PublicBookingBaseUrl, cancellationToken);
+        return Map(t.OnlineBookingEnabled, t.PublicBookingToken, baseUrl);
     }
+
+    // El link que recibe el cliente DEBE ser abrible desde su telefono. En desarrollo la base configurada
+    // suele ser localhost (no abrible); cuando hay una base publica activa del webhook (tunel cloudflared en
+    // dev / dominio en prod) la preferimos, porque apunta al mismo app que sirve /r/{token}. Si la base
+    // configurada ya es publica (un dominio real), la respetamos. EvolutionMasterConfig es global (no por tenant).
+    private async Task<string?> EffectiveBaseAsync(string? configured, CancellationToken ct)
+    {
+        var cfg = await _db.EvolutionMasterConfigs.AsNoTracking().FirstOrDefaultAsync(ct);
+        var publicBase = string.Equals(cfg?.WebhookMode, "Production", StringComparison.OrdinalIgnoreCase)
+            ? cfg?.WebhookPublicUrl
+            : cfg?.WebhookActiveUrl;
+        publicBase = string.IsNullOrWhiteSpace(publicBase) ? null : publicBase!.TrimEnd('/');
+        if (publicBase is not null && (string.IsNullOrWhiteSpace(configured) || IsLocal(configured!)))
+        {
+            return publicBase;
+        }
+        return configured;
+    }
+
+    private static bool IsLocal(string url)
+        => url.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+            || url.Contains("127.0.0.1", StringComparison.Ordinal)
+            || url.Contains("[::1]", StringComparison.Ordinal);
 
     public async Task<OnlineBookingSettingsDto> SetEnabledAsync(bool enabled, string? baseUrl, Guid actorUserId, CancellationToken cancellationToken = default)
     {

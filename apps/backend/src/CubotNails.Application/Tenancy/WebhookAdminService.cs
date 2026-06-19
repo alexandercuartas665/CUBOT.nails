@@ -7,17 +7,25 @@ namespace CubotNails.Application.Tenancy;
 
 public sealed class WebhookAdminService : IWebhookAdminService
 {
-    private const int AppPort = 8080;
+    // Puerto LOCAL al que cloudflared reenvia el trafico del tunel. Debe ser el puerto donde escucha la app
+    // en dev (launchSettings http = 5232), NO el de produccion (8080 en Railway). Si apunta a 8080 en local,
+    // el tunel reenvia a un puerto vacio y los entrantes de Evolution nunca llegan al webhook. Configurable
+    // por WEBHOOK_LOCAL_PORT para hosts que corran en otro puerto.
+    private const int DefaultAppPort = 5232;
 
     private readonly IApplicationDbContext _db;
     private readonly IDevTunnel _tunnel;
     private readonly IWhatsAppConnectorService _connector;
+    private readonly int _appPort;
 
     public WebhookAdminService(IApplicationDbContext db, IDevTunnel tunnel, IWhatsAppConnectorService connector)
     {
         _db = db;
         _tunnel = tunnel;
         _connector = connector;
+
+        var envPort = Environment.GetEnvironmentVariable("WEBHOOK_LOCAL_PORT");
+        _appPort = int.TryParse(envPort, out var p) && p > 0 ? p : DefaultAppPort;
     }
 
     public async Task<WebhookConfigDto> GetAsync(CancellationToken cancellationToken = default)
@@ -54,7 +62,7 @@ public sealed class WebhookAdminService : IWebhookAdminService
         cfg.WebhookToken ??= GenerateToken();
         cfg.WebhookMode = "Development";
 
-        var url = await _tunnel.StartAsync(AppPort, cancellationToken);
+        var url = await _tunnel.StartAsync(_appPort, cancellationToken);
         cfg.WebhookActiveUrl = url;
         await _db.SaveChangesAsync(cancellationToken);
 

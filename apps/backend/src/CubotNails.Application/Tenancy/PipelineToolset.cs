@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using CubotNails.Application.Common;
 using CubotNails.Domain.Enums;
+using Microsoft.EntityFrameworkCore;
 
 namespace CubotNails.Application.Tenancy;
 
@@ -18,11 +20,13 @@ public sealed class PipelineToolset : IPipelineToolset
 {
     private readonly ILeadService _leads;
     private readonly IBusinessUnitService _units;
+    private readonly IApplicationDbContext _db;
 
-    public PipelineToolset(ILeadService leads, IBusinessUnitService units)
+    public PipelineToolset(ILeadService leads, IBusinessUnitService units, IApplicationDbContext db)
     {
         _leads = leads;
         _units = units;
+        _db = db;
     }
 
     public string GroupKey => "pipeline";
@@ -78,6 +82,17 @@ public sealed class PipelineToolset : IPipelineToolset
         if (string.IsNullOrWhiteSpace(nombre)) { return Err("Falta el nombre del cliente (cliente_nombre)."); }
         var telefono = Str(args, "cliente_telefono");
         var tipo = Str(args, "tipo_cliente") ?? "";
+
+        // Si el agente no capturo el telefono, usamos por defecto el numero de WhatsApp DESDE EL QUE escribe
+        // el cliente (el contacto de la conversacion en curso). Asi un lead nunca queda sin telefono. Igual
+        // que el proyecto hermano (default phone = conversacion.ContactPhone).
+        if (string.IsNullOrWhiteSpace(telefono) && AiToolRunContext.ConversationId is Guid convId)
+        {
+            telefono = await _db.Conversations.AsNoTracking()
+                .Where(c => c.Id == convId)
+                .Select(c => c.ContactPhone)
+                .FirstOrDefaultAsync(ct);
+        }
         var resumen = Str(args, "resumen");
         var valor = Dec(args, "valor_estimado");
 
