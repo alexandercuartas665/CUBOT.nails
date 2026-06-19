@@ -6,6 +6,8 @@
 @using Microsoft.AspNetCore.Components.Forms
 @inject IPlatformBrandingService BrandingSvc
 @inject IWebHostEnvironment Env
+@inject IServiceScopeFactory ScopeFactory
+@using Microsoft.Extensions.DependencyInjection
 
 <PageTitle>Marca de la plataforma - CUBOT.nails</PageTitle>
 
@@ -164,7 +166,11 @@ else
         _error = null;
         try
         {
-            await BrandingSvc.SaveAsync(
+            // Scope/DbContext AISLADO para no chocar con el DbContext del circuito (la vista previa
+            // re-renderiza y lee el branding); evita "A second operation was started on this context".
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var svc = scope.ServiceProvider.GetRequiredService<IPlatformBrandingService>();
+            await svc.SaveAsync(
                 new SaveBrandingRequest(_name, _tagline, _logoUrl, _headline, _subtext),
                 await ActorAsync());
             _savedOk = true;
